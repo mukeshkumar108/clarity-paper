@@ -40,6 +40,7 @@ export interface User {
   name: string;
   email: string;
   plan: UserPlan;
+  preferredLanguage: string;
   createdAt: string;
 }
 
@@ -153,6 +154,7 @@ export type PrimarySummaryTrustSignal = {
 
 export interface PrimarySummary {
   bottomLine: string;
+  insightNarrative: string;
   whyThisMatters: string;
   trustSignal: PrimarySummaryTrustSignal;
   mainTakeaways: string[];

@@ -19,8 +19,8 @@ export const HealthCheckResponse = zod.object({
  */
 export const RegisterBody = zod.object({
   name: zod.string(),
-  email: zod.string().email(),
-  password: zod.string().min(8, "Password must be at least 8 characters"),
+  email: zod.string(),
+  password: zod.string(),
 });
 
 /**
@@ -37,6 +37,7 @@ export const LoginResponse = zod.object({
     name: zod.string(),
     email: zod.string(),
     plan: zod.enum(["free", "pro"]),
+    preferredLanguage: zod.string(),
     createdAt: zod.coerce.date(),
   }),
   message: zod.string(),
@@ -57,6 +58,7 @@ export const GetMeResponse = zod.object({
   name: zod.string(),
   email: zod.string(),
   plan: zod.enum(["free", "pro"]),
+  preferredLanguage: zod.string(),
   createdAt: zod.coerce.date(),
 });
 
@@ -216,6 +218,7 @@ export const GetDocumentAnalysisResponse = zod.object({
   bottomLine: zod.string(),
   primarySummary: zod.object({
     bottomLine: zod.string(),
+    insightNarrative: zod.string(),
     whyThisMatters: zod.string(),
     trustSignal: zod.object({
       label: zod.enum([
@@ -499,6 +502,7 @@ export const UpdateProfileResponse = zod.object({
   name: zod.string(),
   email: zod.string(),
   plan: zod.enum(["free", "pro"]),
+  preferredLanguage: zod.string(),
   createdAt: zod.coerce.date(),
 });
 
@@ -518,6 +522,7 @@ export const ExportUserDataResponse = zod.object({
     name: zod.string(),
     email: zod.string(),
     plan: zod.enum(["free", "pro"]),
+    preferredLanguage: zod.string(),
     createdAt: zod.coerce.date(),
   }),
   documents: zod.array(

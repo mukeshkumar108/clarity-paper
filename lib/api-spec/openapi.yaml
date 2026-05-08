@@ -502,6 +502,8 @@ components:
         plan:
           type: string
           enum: [free, pro]
+        preferredLanguage:
+          type: string
         createdAt:
           type: string
           format: date-time
@@ -510,6 +512,7 @@ components:
         - name
         - email
         - plan
+        - preferredLanguage
         - createdAt
 
     Document:
