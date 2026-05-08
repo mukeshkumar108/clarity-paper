@@ -22,6 +22,24 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
   .map((value) => value.trim())
   .filter(Boolean);
 
+void pool
+  .query(`
+    CREATE TABLE IF NOT EXISTS "user_sessions" (
+      "sid" varchar NOT NULL PRIMARY KEY,
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL
+    );
+  `)
+  .then(() =>
+    pool.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_user_sessions_expire"
+      ON "user_sessions" ("expire");
+    `),
+  )
+  .catch((err: unknown) => {
+    logger.error({ err }, "Failed to ensure session table exists");
+  });
+
 app.set("trust proxy", 1);
 
 app.use(
@@ -70,7 +88,7 @@ app.use(
     store: new PgSession({
       pool,
       tableName: "user_sessions",
-      createTableIfMissing: true,
+      createTableIfMissing: false,
     }),
     cookie: {
       httpOnly: true,
