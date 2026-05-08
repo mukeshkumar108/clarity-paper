@@ -1,0 +1,41 @@
+{
+  "documentType": "randomized clinical trial",
+  "text": "Randomized placebo-controlled clinical trial of a mindfulness app after minor surgery. n=42 adults. Participants used the app or a placebo app for 10 days. Primary outcomes were self-reported pain and analgesic use. Pain scores improved modestly in the intervention arm, while analgesic use did not clearly differ. Effect size was not reported.",
+  "draft": {
+    "bottomLine": "This trial suggests the mindfulness app may modestly improve reported pain after minor surgery, but the evidence is still limited by the small sample and the lack of a reported effect size.",
+    "whatPaperActuallyShows": {
+      "studyType": "Randomized placebo-controlled trial",
+      "population": "42 adults after minor surgery",
+      "interventionOrExposure": "Mindfulness app versus placebo app for 10 days",
+      "outcomesMeasured": "Self-reported pain and analgesic use",
+      "observedResult": "Pain scores improved modestly in the intervention arm, but analgesic use did not clearly differ",
+      "claimType": "causal"
+    },
+    "keyFindings": [
+      {
+        "finding": "Self-reported pain improved modestly with the mindfulness app.",
+        "sourceInPaper": "Primary pain outcome",
+        "populationOrSample": "42 post-surgical adults",
+        "effectDirection": "Lower reported pain in the intervention arm",
+        "strengthOfSupport": "Moderate",
+        "plainEnglishMeaning": "The app may help some people feel better, but the study is too small to know how reliable or clinically important the effect is."
+      }
+    ],
+    "evidenceQuality": {
+      "studyType": "Randomized placebo-controlled trial",
+      "sampleSize": "n=42 adults",
+      "controlsOrComparisonGroups": "Placebo app comparison",
+      "statisticalDetail": "Primary outcomes were compared between groups",
+      "effectSizes": "",
+      "replication": "",
+      "publicationBiasRisk": "",
+      "fundingConflictVisibility": "",
+      "generalisability": "Adults after minor surgery"
+    },
+    "practicalUse": {
+      "recommendation": "Maybe useful, low-risk",
+      "reasoning": "This may be worth seeing as an adjunctive, low-risk option, but it is not strong enough to drive treatment decisions on its own.",
+      "caution": "Do not change pain treatment plans based on this paper alone."
+    }
+  }
+}

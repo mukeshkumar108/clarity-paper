@@ -1,0 +1,45 @@
+{
+  "documentType": "health systematic review",
+  "text": "Systematic review of growth mindset and health outcomes. The authors searched PubMed and PsycINFO for English-language studies from 2012 to 2024. Eight studies were included. No meta-analysis was performed. Funding and conflict of interest statements were not reported in the uploaded text.",
+  "draft": {
+    "bottomLine": "This review suggests growth mindset may influence some health outcomes, but the evidence base is mixed and not quantitatively pooled.",
+    "whatPaperActuallyShows": {
+      "studyType": "Systematic review",
+      "population": "Participants from eight included studies",
+      "interventionOrExposure": "Growth mindset-related beliefs or interventions",
+      "outcomesMeasured": "Health-related outcomes and self-reported symptoms",
+      "observedResult": "Some included studies reported positive associations, but results were mixed.",
+      "claimType": "theoretical"
+    },
+    "keyFindings": [
+      {
+        "finding": "Some included studies reported better self-reported outcomes with growth mindset framing.",
+        "sourceInPaper": "Results section",
+        "populationOrSample": "Mixed human samples",
+        "effectDirection": "Generally positive but inconsistent",
+        "strengthOfSupport": "Moderate",
+        "plainEnglishMeaning": "The idea may help in some contexts, but the evidence is not consistent enough to treat it as settled."
+      }
+    ],
+    "evidenceQuality": {
+      "studyType": "Systematic review",
+      "sampleSize": "Eight studies in total",
+      "controlsOrComparisonGroups": "Mixed across included studies",
+      "statisticalDetail": "Narrative synthesis only",
+      "effectSizes": "",
+      "replication": "Limited",
+      "publicationBiasRisk": "Possible because search and inclusion choices may shape which studies appear",
+      "fundingConflictVisibility": "",
+      "generalisability": "Mixed populations across included studies"
+    },
+    "limitationsAndGotchas": [
+      {
+        "severity": "Important limitation",
+        "limitation": "No meta-analysis",
+        "whyItMatters": "The review does not quantify a pooled effect size.",
+        "practicalConsequence": "Readers should not cite this as precise evidence of how large the effect is.",
+        "whatWouldStrengthenIt": "A meta-analysis with risk-of-bias assessment would make the conclusion stronger."
+      }
+    ]
+  }
+}

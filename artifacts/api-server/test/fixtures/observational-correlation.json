@@ -1,0 +1,15 @@
+{
+  "documentType": "observational nutrition study",
+  "text": "Cross-sectional observational study of coffee intake and mood in university students. 480 students completed dietary and mood questionnaires. Regression analyses found higher coffee intake correlated with lower reported fatigue. No intervention was tested.",
+  "draft": {
+    "bottomLine": "This observational study found a correlation between coffee intake and lower fatigue, but it does not prove coffee caused the difference.",
+    "whatPaperActuallyShows": {
+      "studyType": "Observational study",
+      "population": "480 university students",
+      "interventionOrExposure": "Reported coffee intake",
+      "outcomesMeasured": "Questionnaire-based mood and fatigue",
+      "observedResult": "Higher coffee intake correlated with lower self-reported fatigue",
+      "claimType": "correlational"
+    }
+  }
+}

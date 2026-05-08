@@ -1,0 +1,35 @@
+{
+  "documentType": "observational epidemiology paper",
+  "text": "Prospective cohort study of ultra-processed food intake and depressive symptoms in 14,200 adults followed for five years. Dietary questionnaires were used at baseline. Higher ultra-processed food intake was associated with a greater likelihood of later depressive symptoms after statistical adjustment. No intervention was tested.",
+  "draft": {
+    "bottomLine": "This paper reports a meaningful association between higher ultra-processed food intake and later depressive symptoms. It is useful evidence for a pattern, but not a clean causal answer.",
+    "whatPaperActuallyShows": {
+      "studyType": "Prospective cohort study",
+      "population": "14,200 adults followed for five years",
+      "interventionOrExposure": "Higher intake of ultra-processed foods",
+      "outcomesMeasured": "Later depressive symptoms",
+      "observedResult": "Higher ultra-processed food intake was associated with greater likelihood of later depressive symptoms",
+      "claimType": "correlational"
+    },
+    "keyFindings": [
+      {
+        "finding": "Higher ultra-processed food intake tracked with more later depressive symptoms.",
+        "sourceInPaper": "Adjusted cohort analysis",
+        "populationOrSample": "14,200 adults",
+        "effectDirection": "Higher intake linked to worse later mood outcomes",
+        "strengthOfSupport": "Moderate",
+        "plainEnglishMeaning": "Diet quality may matter for mental health, but this study cannot isolate cause and effect."
+      }
+    ],
+    "trustRating": {
+      "rating": "Limited",
+      "reason": "Large prospective cohorts are valuable for spotting patterns over time, but they still cannot rule out residual confounding or reverse causality.",
+      "confidenceLevel": "medium",
+      "citationUse": "Best cited as observational support for a pattern, not as decisive proof."
+    },
+    "realWorldMeaning": {
+      "summary": "A smart reader should treat this as part of a broader nutrition-and-mental-health story rather than a standalone proof that one category of food directly drives depression.",
+      "sensibleInterpretation": "A reasonable takeaway is that diet quality is worth paying attention to, while keeping in mind that many social, behavioral, and health factors move together."
+    }
+  }
+}

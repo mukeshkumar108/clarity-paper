@@ -1,0 +1,25 @@
+{
+  "documentType": "clinical trial",
+  "text": "Randomized controlled pilot trial of a supplement for sleep quality. n=24 adults. Placebo-controlled. p<0.05 for one self-reported sleep score. Effect size was not reported. Follow-up lasted two weeks.",
+  "draft": {
+    "bottomLine": "This small randomized trial found a short-term improvement in one sleep score, but the sample was very small and the effect size is not clear.",
+    "whatPaperActuallyShows": {
+      "studyType": "RCT",
+      "population": "24 adults",
+      "interventionOrExposure": "Supplement versus placebo",
+      "outcomesMeasured": "Self-reported sleep quality",
+      "observedResult": "One short-term sleep score improved versus placebo",
+      "claimType": "causal"
+    },
+    "keyFindings": [
+      {
+        "finding": "One self-reported sleep score improved after two weeks.",
+        "sourceInPaper": "Primary results",
+        "populationOrSample": "24 adults",
+        "effectDirection": "Improved versus placebo",
+        "strengthOfSupport": "Moderate",
+        "plainEnglishMeaning": "The supplement may help a little in the short term, but the study is too small to be decisive."
+      }
+    ]
+  }
+}

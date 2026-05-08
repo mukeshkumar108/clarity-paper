@@ -1,0 +1,15 @@
+{
+  "documentType": "psychology paper",
+  "text": "Pilot intervention study on reframing stress. Participants completed questionnaires before and after the workshop. The uploaded text does not include funding, disclosures, or effect sizes.",
+  "draft": {
+    "bottomLine": "The paper reports promising changes after the intervention, but key transparency details are missing.",
+    "whatPaperActuallyShows": {
+      "studyType": "Pilot intervention study",
+      "population": "Not clear from uploaded text.",
+      "interventionOrExposure": "Stress reframing workshop",
+      "outcomesMeasured": "Questionnaire-based changes",
+      "observedResult": "Post-workshop scores improved",
+      "claimType": "speculative"
+    }
+  }
+}

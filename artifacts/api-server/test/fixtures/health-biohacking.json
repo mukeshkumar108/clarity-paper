@@ -1,0 +1,20 @@
+{
+  "documentType": "biohacking / health",
+  "text": "Pilot study of cold exposure and morning energy in healthy adults. n=18. No control group. Participants self-reported energy after a two-week cold shower routine.",
+  "draft": {
+    "bottomLine": "This pilot study suggests cold showers may increase self-reported morning energy, but the evidence is early and weak.",
+    "whatPaperActuallyShows": {
+      "studyType": "Pilot study",
+      "population": "18 healthy adults",
+      "interventionOrExposure": "Two-week cold shower routine",
+      "outcomesMeasured": "Self-reported morning energy",
+      "observedResult": "Participants reported feeling more energetic",
+      "claimType": "speculative"
+    },
+    "practicalUse": {
+      "recommendation": "Maybe useful, low-risk",
+      "reasoning": "The habit may be low-risk for some people, but the evidence is too weak for strong claims.",
+      "caution": "Do not replace treatment or push through medical contraindications based on this paper."
+    }
+  }
+}

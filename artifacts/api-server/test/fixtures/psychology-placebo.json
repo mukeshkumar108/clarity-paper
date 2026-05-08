@@ -1,0 +1,47 @@
+{
+  "documentType": "psychology paper",
+  "text": "Randomized experiment on sleep expectations and next-day cognition. 96 adults were told either that their sleep quality was above average or below average after a lab night. Cognitive performance and self-reported alertness were measured the next morning. Participants who were told they slept poorly performed worse on attention tasks, despite similar recorded sleep.",
+  "draft": {
+    "bottomLine": "This paper suggests that sleep expectations can change how people feel and perform the next day, even when their recorded sleep was similar. The signal is psychologically interesting and directionally convincing, but it is still a fairly contained experimental result rather than a broad claim about sleep science.",
+    "whatPaperActuallyShows": {
+      "studyType": "Randomized experiment",
+      "population": "96 adults in a lab sleep study",
+      "interventionOrExposure": "Receiving positive or negative feedback about sleep quality",
+      "outcomesMeasured": "Attention-task performance and self-reported alertness",
+      "observedResult": "Participants told they slept poorly performed worse and felt less alert despite similar recorded sleep",
+      "claimType": "causal"
+    },
+    "keyFindings": [
+      {
+        "finding": "Negative sleep feedback worsened next-day performance.",
+        "sourceInPaper": "Main experiment results",
+        "populationOrSample": "96 adults",
+        "effectDirection": "Worse attention-task performance after below-average sleep feedback",
+        "strengthOfSupport": "Moderate",
+        "plainEnglishMeaning": "What people believe about their sleep can affect how they function the next day."
+      }
+    ],
+    "trustRating": {
+      "rating": "Moderate",
+      "reason": "A randomized experiment can test a real expectation effect, but this is still one relatively small lab study.",
+      "confidenceLevel": "medium",
+      "citationUse": "Reasonable to cite as supportive evidence for expectation effects, not as a final word on sleep outcomes."
+    },
+    "realWorldMeaning": {
+      "summary": "Beliefs and framing can shape reported experience and short-term performance, especially for subjective states like alertness.",
+      "sensibleInterpretation": "A smart takeaway is that expectation effects are real enough to matter, but this does not mean mindset overrides biology."
+    },
+    "commonMisreadings": [
+      {
+        "misleadingClaim": "Sleep quality is mostly in your head.",
+        "whatThePaperSupports": "The study supports a meaningful expectation effect on performance and alertness, not the idea that actual sleep does not matter.",
+        "whyTheDistinctionMatters": "Expectation effects can coexist with real biological sleep needs."
+      }
+    ],
+    "practicalUse": {
+      "recommendation": "Interesting but too early",
+      "reasoning": "Useful for understanding expectation effects and communication around sleep, but not enough to change clinical sleep decisions.",
+      "caution": "Do not use this paper alone to dismiss ongoing sleep problems or medical sleep disorders."
+    }
+  }
+}

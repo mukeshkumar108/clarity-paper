@@ -1,0 +1,49 @@
+{
+  "documentType": "meta-analysis",
+  "text": "Meta-analysis of 23 randomized trials on exercise and depressive symptoms in adults with mild to moderate depression. Total sample size was 3,140 participants. Random-effects models were used. The pooled effect favored exercise for reducing depressive symptoms, with moderate heterogeneity. Publication bias was assessed with funnel plots.",
+  "draft": {
+    "bottomLine": "This meta-analysis supports the idea that exercise can reduce depressive symptoms in adults with mild to moderate depression. Overall, the evidence feels meaningfully stronger here than in a single trial, although the size and consistency of benefit still vary across studies.",
+    "whatPaperActuallyShows": {
+      "studyType": "Meta-analysis",
+      "population": "3,140 adults across 23 randomized trials",
+      "interventionOrExposure": "Exercise interventions",
+      "outcomesMeasured": "Depressive symptom scores",
+      "observedResult": "The pooled effect favored exercise for reducing depressive symptoms",
+      "claimType": "theoretical"
+    },
+    "keyFindings": [
+      {
+        "finding": "Across trials, exercise was associated with lower depressive symptom scores.",
+        "sourceInPaper": "Pooled primary analysis",
+        "populationOrSample": "3,140 adults",
+        "effectDirection": "Symptoms improved on average with exercise",
+        "strengthOfSupport": "Strong",
+        "plainEnglishMeaning": "Exercise appears to be a credible part of the evidence base for improving depressive symptoms."
+      }
+    ],
+    "trustRating": {
+      "rating": "Strong",
+      "reason": "This is a meta-analysis of randomized trials with a large combined sample, which gives the question a stronger evidence base than a single study.",
+      "confidenceLevel": "high",
+      "citationUse": "Reasonable to cite as strong support for exercise as part of depression care, with normal caveats about variation across interventions and populations."
+    },
+    "limitationsAndGotchas": [
+      {
+        "severity": "Important limitation",
+        "limitation": "The included exercise programs varied across trials.",
+        "whyItMatters": "Not all exercise interventions are equally effective, so the pooled average may hide important differences.",
+        "practicalConsequence": "The result supports exercise broadly, but not a single exact protocol for every person.",
+        "whatWouldStrengthenIt": "More head-to-head trials and clearer subgroup analyses would sharpen the practical guidance."
+      }
+    ],
+    "realWorldMeaning": {
+      "summary": "This is useful evidence for exercise as a real part of the depression-treatment conversation, although it still belongs inside a broader care context.",
+      "sensibleInterpretation": "The sensible takeaway is that exercise has credible support as an adjunct or part of care, not that it replaces all other treatment."
+    },
+    "practicalUse": {
+      "recommendation": "Maybe useful, low-risk",
+      "reasoning": "The evidence is strong enough to take seriously, but treatment choices still need to fit the individual and the broader clinical picture.",
+      "caution": "Do not change medication or formal mental-health treatment based on one paper alone."
+    }
+  }
+}

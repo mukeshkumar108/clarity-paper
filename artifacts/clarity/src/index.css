@@ -1,0 +1,122 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* ... existing tokens ... */
+  --color-canvas-parchment: #f7f7f4;
+  --color-inkwell: #262510;
+  --color-muted-stone: #7a7974;
+  --color-deep-shadow: #141414;
+  --color-pebble-gray: #e6e5e0;
+  --color-onyx-outline: #f54e00;
+  --color-chartreuse-alert: #4ade80;
+  --color-goldenrod-accent: #c08532;
+  --color-forest-green-action: #34785c;
+  --color-highlight-beige: #cdcdc9;
+
+  /* Standard Tailwind mapping */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-card-border: var(--border);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover-border: var(--border);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+
+  /* Typography Fonts */
+  --font-cursorgothic: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-eb-garamond: "Lora", ui-serif, Georgia, serif;
+  --font-berkeleymono: ui-monospace, "Cascadia Code", "Source Code Pro", monospace;
+  --font-sans: var(--font-cursorgothic);
+  --font-serif: var(--font-eb-garamond);
+  --font-mono: var(--font-berkeleymono);
+  --font-lato: var(--font-cursorgothic);
+
+  /* Radius */
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+
+  /* Shadows */
+  --shadow-xl: rgba(0, 0, 0, 0.14) 0px 28px 70px 0px, rgba(0, 0, 0, 0.1) 0px 14px 32px 0px, oklab(0.263084 -0.00230259 0.0124794 / 0.1) 0px 0px 0px 1px;
+  --shadow-subtle: oklab(0.263084 -0.00230259 0.0124794 / 0.1) 0px 0px 0px 1px, rgba(0, 0, 0, 0.28) 0px 18px 36px -18px;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    background:
+      radial-gradient(circle at top left, rgba(205, 205, 201, 0.32), transparent 28%),
+      linear-gradient(180deg, #fbfbf8 0%, #f7f7f4 100%);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-sans tracking-tight text-deep-shadow;
+  }
+
+  /* Global Icon Scaling */
+  svg {
+    @apply shrink-0;
+  }
+}
+
+@layer components {
+  .studio-container {
+    @apply mx-auto max-w-[1240px] px-5 md:px-8 lg:px-10;
+  }
+
+  .studio-section-padding {
+    @apply py-20 md:py-28;
+  }
+
+  .studio-header {
+    @apply fixed top-0 left-0 right-0 z-50 h-[72px] border-b border-pebble-gray/80 bg-canvas-parchment/88 backdrop-blur-xl flex items-center justify-between transition-all;
+  }
+
+  .studio-sidebar {
+    @apply w-[284px] min-w-[284px] border-r border-pebble-gray/80 bg-white/55 flex flex-col shrink-0 transition-all backdrop-blur-xl;
+  }
+
+  .studio-sidebar-item {
+    @apply flex items-center gap-3 rounded-xl px-4 py-3 text-[14px] font-medium transition-all;
+  }
+
+  .studio-app-shell {
+    @apply flex h-screen bg-canvas-parchment overflow-hidden font-sans text-inkwell;
+  }
+
+  .studio-main-content {
+    @apply flex-1 flex flex-col min-w-0 overflow-auto relative;
+  }
+}
+
+

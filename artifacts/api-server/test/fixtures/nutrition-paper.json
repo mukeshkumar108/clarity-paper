@@ -1,0 +1,40 @@
+{
+  "documentType": "nutrition paper",
+  "text": "Randomized crossover trial of a higher-protein breakfast versus a standard breakfast in 68 adults. Participants completed both conditions over two weeks. Researchers measured hunger ratings, lunch calorie intake, and afternoon energy. The higher-protein breakfast reduced self-reported hunger and slightly reduced lunch calorie intake.",
+  "draft": {
+    "bottomLine": "This paper suggests a higher-protein breakfast can modestly reduce hunger later in the day and may slightly reduce lunch intake. The effect looks practical but not dramatic.",
+    "whatPaperActuallyShows": {
+      "studyType": "Randomized crossover trial",
+      "population": "68 adults",
+      "interventionOrExposure": "Higher-protein breakfast versus standard breakfast",
+      "outcomesMeasured": "Hunger ratings, lunch calorie intake, and afternoon energy",
+      "observedResult": "The higher-protein breakfast lowered hunger ratings and slightly reduced lunch calorie intake",
+      "claimType": "causal"
+    },
+    "keyFindings": [
+      {
+        "finding": "Participants felt less hungry after the higher-protein breakfast.",
+        "sourceInPaper": "Primary outcomes",
+        "populationOrSample": "68 adults",
+        "effectDirection": "Lower hunger ratings",
+        "strengthOfSupport": "Moderate",
+        "plainEnglishMeaning": "Protein at breakfast may help some people feel fuller for longer."
+      }
+    ],
+    "trustRating": {
+      "rating": "Moderate",
+      "reason": "A randomized crossover design is useful here, and the sample is decent for a feeding study, but the measured changes appear modest.",
+      "confidenceLevel": "medium",
+      "citationUse": "Reasonable to cite as moderate support for satiety effects from a higher-protein breakfast."
+    },
+    "realWorldMeaning": {
+      "summary": "This is the kind of paper that can inform a practical habit, but it is more about modest appetite management than a major metabolic breakthrough.",
+      "sensibleInterpretation": "The sensible takeaway is that breakfast composition can influence appetite, but the likely benefit is incremental, not transformative."
+    },
+    "practicalUse": {
+      "recommendation": "Maybe useful, low-risk",
+      "reasoning": "Trying a higher-protein breakfast is relatively low-risk for many people and is consistent with the study's modest effect.",
+      "caution": "Do not treat this as a universal weight-loss solution."
+    }
+  }
+}

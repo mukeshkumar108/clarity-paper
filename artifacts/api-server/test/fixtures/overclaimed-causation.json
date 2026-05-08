@@ -1,0 +1,22 @@
+{
+  "documentType": "psychology paper",
+  "text": "Observational study of social media use and anxiety. 1200 adolescents completed surveys. Higher social media use was associated with higher anxiety scores. The paper does not test an intervention or establish causal direction.",
+  "draft": {
+    "bottomLine": "This paper reports an association between social media use and anxiety, not proof that one causes the other.",
+    "whatPaperActuallyShows": {
+      "studyType": "Observational study",
+      "population": "1200 adolescents",
+      "interventionOrExposure": "Survey-reported social media use",
+      "outcomesMeasured": "Anxiety scores",
+      "observedResult": "Higher social media use was associated with higher anxiety scores",
+      "claimType": "correlational"
+    },
+    "commonMisreadings": [
+      {
+        "misleadingClaim": "Social media causes anxiety.",
+        "whatThePaperSupports": "The study found a correlation between higher use and higher anxiety scores.",
+        "whyTheDistinctionMatters": "Other factors could explain the pattern, and causality could run in either direction."
+      }
+    ]
+  }
+}

@@ -1,0 +1,427 @@
+Build a polished full-stack SaaS web app called “Clarity”.
+
+Clarity helps ordinary people understand important documents before they sign, reply, or make a decision. Users can upload or paste a document, receive a plain-English summary, see key clauses, risks, obligations, deadlines, confusing terms, and ask questions about the document.
+
+Important:
+Clarity is NOT a law firm.
+Clarity does NOT provide legal advice.
+Clarity explains documents in plain English and helps users identify issues they may want to discuss with a qualified professional.
+
+Target users:
+- renters reviewing tenancy agreements
+- employees reviewing employment contracts
+- freelancers reviewing client contracts
+- small business owners reviewing supplier/client terms
+- people receiving legal letters
+- people reviewing NDAs, service agreements, invoices, policies, or settlement documents
+
+Tone:
+- calm
+- clear
+- trustworthy
+- plain English
+- reassuring
+- professional
+- not scary
+- not gimmicky
+- not pretending to be a lawyer
+
+Build:
+- Full-stack web app
+- React + TypeScript frontend
+- Node/Express or Next.js backend
+- PostgreSQL or SQLite depending on Replit setup
+- Prisma or simple database layer
+- Auth/login
+- File upload
+- PDF/DOCX/TXT extraction
+- Paste text option
+- OpenRouter integration for LLM analysis
+- Stripe-ready pricing/paywall structure if possible
+- Environment variables for API keys
+- Responsive design
+- Demo-ready
+
+Core pages:
+1. Landing page
+2. Sign up / login
+3. Dashboard
+4. New Document
+5. Document Analysis
+6. Document Q&A
+7. Billing / Upgrade
+8. Settings
+
+Landing page:
+Hero:
+“Understand important documents before you sign.”
+
+Subcopy:
+“Upload a contract, tenancy agreement, employment letter, NDA, or policy. Clarity explains it in plain English, highlights what matters, and helps you ask better questions.”
+
+CTA:
+- Try free
+- Upload document
+
+Sections:
+- How it works
+- What Clarity checks
+- Example document types
+- Privacy and security
+- Legal disclaimer
+
+Auth:
+Implement simple email/password auth.
+If full auth is hard, use a simple local auth/session system suitable for demo, but structure it so it can be replaced with Supabase/Auth.js later.
+
+Database models:
+User:
+- id
+- email
+- name
+- passwordHash if using local auth
+- plan: free, pro
+- createdAt
+- updatedAt
+
+Document:
+- id
+- userId
+- title
+- documentType
+- originalFileName
+- sourceType: upload, paste
+- extractedText
+- pageCountEstimate
+- wordCount
+- status: uploaded, extracting, analysing, completed, failed
+- isDemo
+- createdAt
+- updatedAt
+
+DocumentAnalysis:
+- id
+- documentId
+- briefSummary
+- plainEnglishSummary
+- keyPoints JSON
+- keyClauses JSON
+- obligations JSON
+- deadlines JSON
+- risks JSON
+- unusualTerms JSON
+- missingInfo JSON
+- questionsToAsk JSON
+- confidenceNotes
+- createdAt
+- updatedAt
+
+DocumentQuestion:
+- id
+- documentId
+- userId
+- question
+- answer
+- createdAt
+
+UsageEvent:
+- id
+- userId
+- eventType
+- documentId optional
+- createdAt
+
+Subscription:
+- id
+- userId
+- plan
+- status
+- stripeCustomerId optional
+- stripeSubscriptionId optional
+- createdAt
+- updatedAt
+
+Free tier limits:
+- Free users can analyse:
+  - pasted text up to 1,500 words
+  - uploaded documents estimated up to 3 pages
+  - brief summary
+  - 3 key points
+  - 2 document questions
+- Pro users unlock:
+  - longer documents
+  - full analysis
+  - clause breakdown
+  - risks/watch-outs
+  - obligations/deadlines
+  - more Q&A
+  - export report
+
+If Stripe is too much for this build:
+- Implement plan field and upgrade UI
+- Add Stripe placeholder service
+- Clearly mark payment integration as ready to wire
+- Do not create fake successful payments unless using test mode
+
+New Document flow:
+User can:
+1. Upload PDF/DOCX/TXT
+2. Paste text manually
+
+Fields:
+- document title
+- document type:
+  - tenancy agreement
+  - employment contract
+  - NDA
+  - freelance/client contract
+  - service agreement
+  - supplier terms
+  - legal letter
+  - settlement agreement
+  - policy document
+  - other
+- jurisdiction optional:
+  - UK
+  - US
+  - EU
+  - other / not sure
+- goal:
+  - understand before signing
+  - find risky clauses
+  - prepare questions
+  - summarise quickly
+  - respond to a letter
+  - negotiate terms
+
+File/text extraction:
+- Extract text from PDF if possible
+- Extract text from DOCX if possible
+- TXT works directly
+- If extraction fails, show useful error and allow paste text fallback
+- Estimate page count based on file metadata or word count
+- Enforce free-tier limits
+
+Analysis pipeline:
+Create services:
+- services/documentExtraction.ts
+- services/usageLimits.ts
+- services/llm/openRouterProvider.ts
+- services/documentAnalysis.ts
+- services/documentQa.ts
+- services/export.ts
+
+Use OpenRouter if OPENROUTER_API_KEY exists.
+If no key exists, use demo/mock mode clearly labelled.
+Do not silently fake real AI.
+
+Document analysis prompt:
+The LLM should return strict JSON:
+{
+  "briefSummary": string,
+  "plainEnglishSummary": string,
+  "documentType": string,
+  "keyPoints": [
+    {
+      "title": string,
+      "explanation": string,
+      "importance": "low" | "medium" | "high"
+    }
+  ],
+  "keyClauses": [
+    {
+      "clauseName": string,
+      "plainEnglishMeaning": string,
+      "whyItMatters": string,
+      "riskLevel": "low" | "medium" | "high",
+      "sourceText": string | null
+    }
+  ],
+  "obligations": [
+    {
+      "who": "user" | "other_party" | "both" | "unknown",
+      "obligation": string,
+      "deadline": string | null,
+      "riskIfMissed": string | null
+    }
+  ],
+  "deadlines": [
+    {
+      "dateOrTiming": string,
+      "description": string,
+      "importance": "low" | "medium" | "high"
+    }
+  ],
+  "risks": [
+    {
+      "title": string,
+      "explanation": string,
+      "riskLevel": "low" | "medium" | "high",
+      "whatToCheck": string
+    }
+  ],
+  "unusualTerms": [
+    {
+      "term": string,
+      "whyItMayBeUnusual": string,
+      "whatToAsk": string
+    }
+  ],
+  "missingInfo": [
+    {
+      "item": string,
+      "whyItMatters": string
+    }
+  ],
+  "questionsToAsk": [
+    {
+      "question": string,
+      "whyAskThis": string
+    }
+  ],
+  "confidenceNotes": string
+}
+
+Legal safety rules:
+- Never say “this is legally valid”
+- Never say “you should sign”
+- Never say “you should sue”
+- Never give definitive legal advice
+- Use wording like:
+  - “This may mean…”
+  - “You may want to check…”
+  - “This could be worth asking…”
+  - “A qualified professional can confirm…”
+- Always include disclaimer:
+  “Clarity provides document explanation, not legal advice.”
+
+Document Analysis screen:
+Show:
+- document title
+- document type
+- status
+- free/pro badge
+- brief summary
+- plain-English summary
+- key points
+- key clauses
+- obligations
+- deadlines
+- risks/watch-outs
+- unusual terms
+- missing information
+- questions to ask before signing/responding
+- confidence notes
+- disclaimer
+
+Free users:
+Show:
+- brief summary
+- 3 key points
+- limited risk preview
+- 2 Q&A questions
+Blur/lock:
+- full clause breakdown
+- obligations
+- full risks
+- export report
+- more Q&A
+Show upgrade CTA.
+
+Pro users:
+Show full analysis.
+
+Document Q&A:
+User can ask questions about the uploaded document.
+Examples:
+- “What am I agreeing to?”
+- “Can they terminate this easily?”
+- “What happens if I cancel?”
+- “Are there any fees?”
+- “What should I ask before signing?”
+- “Explain clause 8 in simple terms.”
+
+Q&A rules:
+- Answer only from the document text
+- If unsure, say so
+- Do not invent clauses
+- Do not provide legal advice
+- Suggest checking with a professional for high-risk issues
+- Keep answers plain-English
+
+Limit free users to 2 questions per document.
+Pro users get more.
+
+Dashboard:
+- Recent documents
+- Search
+- Filter by document type
+- Status
+- Date uploaded
+- Risk level summary
+- Free usage remaining
+- Upgrade CTA
+- Button: analyse new document
+
+Exports:
+Pro users can:
+- export analysis as PDF-style HTML/print
+- export as Markdown
+- copy summary to clipboard
+- download extracted text as TXT
+
+Settings:
+- Name
+- Email
+- Plan
+- Usage
+- Delete account/data
+- Export all user data as JSON
+- API/demo mode status
+- Legal disclaimer
+
+Billing / Upgrade:
+Create upgrade page:
+- Free
+  - up to 3 pages
+  - brief summary
+  - 2 questions
+- Pro
+  - longer documents
+  - full clause breakdown
+  - risk analysis
+  - obligations/deadlines
+  - more Q&A
+  - export reports
+
+If Stripe test integration is possible:
+- Add Stripe Checkout in test mode
+- Use STRIPE_SECRET_KEY and STRIPE_PRICE_ID env vars
+- Add webhook placeholder
+If not possible:
+- Build the upgrade UI and plan architecture cleanly
+
+Design:
+- premium SaaS feel
+- trustworthy
+- clean
+- calm
+- light background
+- strong typography
+- rounded cards
+- clear risk badges
+- clear locked/pro sections
+- responsive
+- mobile-friendly
+- not cluttered
+
+Important:
+- Do not build a fake landing page only
+- The upload/paste/analyse flow must work
+- The document library must work
+- Q&A must work if LLM key exists
+- Demo mode must be clearly labelled if no key exists
+- No fake legal advice
+- No broken buttons
+- Keep code organised
+- Make it demo-ready
