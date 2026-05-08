@@ -10,7 +10,8 @@
     "start:local": "node --env-file=../../.env --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "seed:demos": "node --env-file=../../.env --import tsx ./src/scripts/seed-demos.ts"
+    "seed:demos": "node --import tsx ./src/scripts/seed-demos.ts",
+    "seed:demos:local": "node --env-file=../../.env --import tsx ./src/scripts/seed-demos.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

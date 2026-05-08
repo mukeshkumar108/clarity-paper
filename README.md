@@ -77,7 +77,7 @@ Set these backend variables:
 After first deploy, run:
 
 1. `pnpm --filter @workspace/db push`
-2. `pnpm seed:demos`
+2. `pnpm seed:demos:prod`
 
 against the production environment.
 

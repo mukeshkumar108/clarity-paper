@@ -8,7 +8,8 @@
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
-    "seed:demos": "pnpm --filter api-server seed:demos"
+    "seed:demos": "pnpm --filter @workspace/api-server seed:demos:local",
+    "seed:demos:prod": "pnpm --filter @workspace/api-server seed:demos"
   },
   "private": true,
   "devDependencies": {
