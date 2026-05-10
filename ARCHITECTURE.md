@@ -45,11 +45,11 @@ User query
 
 | Source | Client | Notes |
 |--------|--------|-------|
-| Semantic Scholar | `semanticScholarClient.ts` | Primary; citation counts, study type |
+| Semantic Scholar | `semanticScholarClient.ts` | Citation counts, study type; optional API key, circuit-breaks on repeated 429s |
 | OpenAlex | `openAlexClient.ts` | Retraction status, citation percentile |
 | EuropePMC | `europePMCClient.ts` | Biomedical depth, especially older literature |
 
-All three run in parallel. Results are deduped by DOI then title fuzzy match.
+All three run in parallel. Results are deduped by DOI then title fuzzy match. If Semantic Scholar is rate-limited or unavailable, the pipeline degrades to OpenAlex + EuropePMC rather than failing the search.
 
 ### Evidence Bucket Ranking
 

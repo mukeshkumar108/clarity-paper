@@ -393,7 +393,12 @@ router.get("/documents/:id/questions", requireAuth, async (req, res): Promise<vo
   const [doc] = await db
     .select()
     .from(documentsTable)
-    .where(and(eq(documentsTable.id, id), eq(documentsTable.userId, req.session.userId!)));
+    .where(
+      and(
+        eq(documentsTable.id, id),
+        or(eq(documentsTable.userId, req.session.userId!), eq(documentsTable.isDemo, true)),
+      ),
+    );
 
   if (!doc) {
     res.status(404).json({ error: "Document not found" });
@@ -403,7 +408,12 @@ router.get("/documents/:id/questions", requireAuth, async (req, res): Promise<vo
   const questions = await db
     .select()
     .from(documentQuestionsTable)
-    .where(eq(documentQuestionsTable.documentId, id))
+    .where(
+      and(
+        eq(documentQuestionsTable.documentId, id),
+        eq(documentQuestionsTable.userId, req.session.userId!),
+      ),
+    )
     .orderBy(documentQuestionsTable.createdAt);
 
   res.json(questions);
@@ -423,7 +433,12 @@ router.post("/documents/:id/questions", requireAuth, async (req, res): Promise<v
   const [doc] = await db
     .select()
     .from(documentsTable)
-    .where(and(eq(documentsTable.id, id), eq(documentsTable.userId, user.id)));
+    .where(
+      and(
+        eq(documentsTable.id, id),
+        or(eq(documentsTable.userId, user.id), eq(documentsTable.isDemo, true)),
+      ),
+    );
 
   if (!doc) {
     res.status(404).json({ error: "Document not found" });

@@ -143,7 +143,10 @@ function DocumentRow({ doc, onDeleted }: { doc: Doc; onDeleted: (id: number) => 
 export default function Dashboard() {
   const queryClient = useQueryClient();
   const { data: summary, isLoading } = useGetDashboardSummary({
-    query: { queryKey: getGetDashboardSummaryQueryKey() },
+    query: {
+      queryKey: getGetDashboardSummaryQueryKey(),
+      staleTime: 5 * 60_000,
+    },
   });
 
   const handleDeleted = (id: number) => {

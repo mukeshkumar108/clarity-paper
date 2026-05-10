@@ -16,11 +16,36 @@ const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
 // Papers below this score are discarded — they're semantically unrelated to the
 // query even if their evidence quality is high. Kept low to avoid false negatives.
-const LOW_RELEVANCE_THRESHOLD = 0.04;
+const LOW_RELEVANCE_THRESHOLD = 0.08;
+const LOW_RELEVANCE_TEXT_GUARD_THRESHOLD = 0.12;
+const QUERY_STOPWORDS = new Set([
+  "the", "and", "for", "with", "that", "this", "from", "into", "what", "when",
+  "where", "which", "does", "actually", "help", "helps", "real", "hype", "how",
+  "about", "effects", "benefits", "benefit", "impact", "health", "paper", "papers",
+  "study", "studies",
+]);
 
 interface RerankApiResult {
   index: number;
   relevance_score: number;
+}
+
+function tokenizeQuery(query: string): string[] {
+  return query
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !QUERY_STOPWORDS.has(token));
+}
+
+function hasMeaningfulQueryOverlap(
+  queryTokens: string[],
+  title: string,
+  abstract: string,
+): boolean {
+  if (queryTokens.length === 0) return true;
+  const text = `${title} ${abstract}`.toLowerCase();
+  return queryTokens.some((token) => text.includes(token));
 }
 
 export async function rerankByRelevance<
@@ -38,6 +63,7 @@ export async function rerankByRelevance<
   }
 
   try {
+    const queryTokens = tokenizeQuery(query);
     const documents = papers.map(
       (p) => `${p.title}\n${p.abstract.slice(0, 800)}`,
     );
@@ -77,9 +103,20 @@ export async function rerankByRelevance<
     }));
 
     const before = withScores.length;
-    const filtered = withScores.filter(
-      (p) => p.relevanceScore >= LOW_RELEVANCE_THRESHOLD,
-    );
+    const filtered = withScores.filter((p) => {
+      if (p.relevanceScore < LOW_RELEVANCE_THRESHOLD) {
+        return false;
+      }
+
+      if (
+        p.relevanceScore < LOW_RELEVANCE_TEXT_GUARD_THRESHOLD &&
+        !hasMeaningfulQueryOverlap(queryTokens, p.title, p.abstract)
+      ) {
+        return false;
+      }
+
+      return true;
+    });
     const removed = before - filtered.length;
 
     logger.info(

@@ -589,6 +589,70 @@ export default function DocumentView({ id }: { id: string }) {
 
   const askedSet = new Set((questions as ViewQuestion[] | undefined)?.map((q) => q.question) ?? []);
 
+  const viewAnalysis = (analysis ?? null) as ViewAnalysis | null;
+  const editorialView = viewAnalysis?.editorialView;
+  const primarySummary = viewAnalysis?.primarySummary;
+  const suggestedQuestions =
+    editorialView?.questionsWorthAsking ??
+    primarySummary?.suggestedQuestions ??
+    viewAnalysis?.suggestedQuestions ??
+    [];
+  const editorialFindings = editorialView?.findings ?? [];
+  const trustNarrative = editorialView?.trustNarrative ?? primarySummary?.trustSignal?.summary ?? "";
+  const deeperDive = editorialView?.deeperDive;
+
+  const deeperDiveSections = [
+    { title: deeperDive?.howDesignedTitle, body: deeperDive?.howDesignedBody },
+    { title: deeperDive?.cantTellUsTitle, body: deeperDive?.cantTellUsBody },
+    { title: deeperDive?.biggerPictureTitle, body: deeperDive?.biggerPictureBody },
+    { title: deeperDive?.technicallyCuriousTitle, body: deeperDive?.technicallyCuriousBody },
+  ].filter((item) => (item.title?.length ?? 0) > 8 && (item.body?.length ?? 0) > 30);
+
+  const confLevel = viewAnalysis?.confidenceLevel;
+  const confLabel = confLevel ? `${capitalise(confLevel)} confidence` : null;
+  const claimType = viewAnalysis?.whatPaperActuallyShows?.claimType ?? "";
+  const claimLabel = CLAIM_TYPE_LABELS[claimType] ?? claimType;
+  const keyFindings = viewAnalysis?.keyFindings ?? [];
+  const studyTypeForEvidence =
+    viewAnalysis?.whatPaperActuallyShows?.studyType || viewAnalysis?.evidenceQuality?.studyType;
+
+  const findingEvidence = useMemo(
+    () =>
+      editorialFindings
+        .map((finding, index) => {
+          const candidatePool = index < keyFindings.length ? [keyFindings[index], ...keyFindings.filter((_, itemIndex) => itemIndex !== index)] : keyFindings;
+          return pickBestEvidence(
+            finding,
+            candidatePool.filter(Boolean) as NonNullable<ViewAnalysis["keyFindings"]>,
+            studyTypeForEvidence,
+            confLevel,
+          );
+        }),
+    [editorialFindings, keyFindings, studyTypeForEvidence, confLevel],
+  );
+  const questionEvidence = useMemo(
+    () =>
+      ((questions as ViewQuestion[] | undefined) ?? []).map((question) => ({
+        id: question.id,
+        evidence: buildQuestionEvidence(
+          question.question,
+          question.answer,
+          keyFindings,
+          studyTypeForEvidence,
+          confLevel,
+        ),
+      })),
+    [questions, keyFindings, studyTypeForEvidence, confLevel],
+  );
+  const allEvidence = useMemo(
+    () => [
+      ...findingEvidence.filter(Boolean) as GroundedEvidence[],
+      ...questionEvidence.flatMap((item) => item.evidence),
+    ],
+    [findingEvidence, questionEvidence],
+  );
+  const activeEvidence = allEvidence.find((item) => item.id === activeEvidenceId) ?? null;
+
   // Poll while analysing
   useEffect(() => {
     if (document?.status === "analysing") {
@@ -621,6 +685,12 @@ export default function DocumentView({ id }: { id: string }) {
   useEffect(() => {
     if (showChat) chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [(questions as ViewQuestion[] | undefined)?.length, askMutation.isPending, showChat]);
+
+  useEffect(() => {
+    if (!activeEvidenceId && findingEvidence[0]) {
+      setActiveEvidenceId(findingEvidence[0].id);
+    }
+  }, [activeEvidenceId, findingEvidence]);
 
   const handleAnalyse = () => {
     setProgressStage(0);
@@ -883,73 +953,6 @@ export default function DocumentView({ id }: { id: string }) {
   }
 
   // ── Main workspace ───────────────────────────────────────────────────────────
-
-  const viewAnalysis = (analysis ?? null) as ViewAnalysis | null;
-  const editorialView = viewAnalysis?.editorialView;
-  const primarySummary = viewAnalysis?.primarySummary;
-  const suggestedQuestions =
-    editorialView?.questionsWorthAsking ??
-    primarySummary?.suggestedQuestions ??
-    viewAnalysis?.suggestedQuestions ??
-    [];
-  const editorialFindings = editorialView?.findings ?? [];
-  const trustNarrative = editorialView?.trustNarrative ?? primarySummary?.trustSignal?.summary ?? "";
-  const deeperDive = editorialView?.deeperDive;
-
-  const deeperDiveSections = [
-    { title: deeperDive?.howDesignedTitle, body: deeperDive?.howDesignedBody },
-    { title: deeperDive?.cantTellUsTitle, body: deeperDive?.cantTellUsBody },
-    { title: deeperDive?.biggerPictureTitle, body: deeperDive?.biggerPictureBody },
-    { title: deeperDive?.technicallyCuriousTitle, body: deeperDive?.technicallyCuriousBody },
-  ].filter((item) => (item.title?.length ?? 0) > 8 && (item.body?.length ?? 0) > 30);
-
-  const confLevel = viewAnalysis?.confidenceLevel;
-  const confLabel = confLevel ? `${capitalise(confLevel)} confidence` : null;
-  const claimType = viewAnalysis?.whatPaperActuallyShows?.claimType ?? "";
-  const claimLabel = CLAIM_TYPE_LABELS[claimType] ?? claimType;
-  const keyFindings = viewAnalysis?.keyFindings ?? [];
-  const findingEvidence = useMemo(
-    () =>
-      editorialFindings
-        .map((finding, index) => {
-          const candidatePool = index < keyFindings.length ? [keyFindings[index], ...keyFindings.filter((_, itemIndex) => itemIndex !== index)] : keyFindings;
-          return pickBestEvidence(
-            finding,
-            candidatePool.filter(Boolean) as NonNullable<ViewAnalysis["keyFindings"]>,
-            viewAnalysis?.whatPaperActuallyShows?.studyType || viewAnalysis?.evidenceQuality?.studyType,
-            confLevel,
-          );
-        }),
-    [editorialFindings, keyFindings, viewAnalysis?.whatPaperActuallyShows?.studyType, viewAnalysis?.evidenceQuality?.studyType, confLevel],
-  );
-  const questionEvidence = useMemo(
-    () =>
-      ((questions as ViewQuestion[] | undefined) ?? []).map((question) => ({
-        id: question.id,
-        evidence: buildQuestionEvidence(
-          question.question,
-          question.answer,
-          keyFindings,
-          viewAnalysis?.whatPaperActuallyShows?.studyType || viewAnalysis?.evidenceQuality?.studyType,
-          confLevel,
-        ),
-      })),
-    [questions, keyFindings, viewAnalysis?.whatPaperActuallyShows?.studyType, viewAnalysis?.evidenceQuality?.studyType, confLevel],
-  );
-  const allEvidence = useMemo(
-    () => [
-      ...findingEvidence.filter(Boolean) as GroundedEvidence[],
-      ...questionEvidence.flatMap((item) => item.evidence),
-    ],
-    [findingEvidence, questionEvidence],
-  );
-  const activeEvidence = allEvidence.find((item) => item.id === activeEvidenceId) ?? null;
-
-  useEffect(() => {
-    if (!activeEvidenceId && findingEvidence[0]) {
-      setActiveEvidenceId(findingEvidence[0].id);
-    }
-  }, [activeEvidenceId, findingEvidence]);
 
   return (
     <DashboardLayout immersive>

@@ -32,7 +32,7 @@ export function DashboardLayout({ children, immersive = false }: DashboardLayout
             </div>
             <div className="min-w-0">
               <span className="block text-[18px] font-semibold tracking-tight text-deep-shadow whitespace-nowrap">Clarity</span>
-              <span className="block text-[11px] uppercase tracking-[0.22em] text-muted-stone">Contract review</span>
+              <span className="block text-[11px] uppercase tracking-[0.22em] text-muted-stone">Research review</span>
             </div>
           </Link>
         </div>

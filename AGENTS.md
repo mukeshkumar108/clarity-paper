@@ -68,13 +68,14 @@ human language at the appropriate depth for each section.
 | Pass | Model | Purpose |
 |------|-------|---------|
 | Pass 1 | `OPENROUTER_STRUCTURED_MODEL` (default: `google/gemini-2.5-flash`) | Structured extraction, schema adherence |
-| Pass 2 | deepseek/deepseek-v4-pro | Editorial synthesis, human voice |
+| Pass 2 | `OPENROUTER_EDITORIAL_MODEL` (default: `google/gemini-2.5-flash`) | Editorial synthesis, human voice |
 
 Do not swap these models without explicit instruction. Model 
 selection was validated through testing multiple alternatives. 
-DeepSeek for Pass 2 was specifically chosen because it produces 
-warm, curious, editorially coherent prose rather than structured 
-analysis language.
+Gemini Flash is the current production default because it avoids
+the timeout issues that broke the Vercel → Railway proxy path
+with slower models, while remaining acceptable for the editorial
+voice.
 
 ---
 
@@ -188,7 +189,7 @@ Specific things that signal bad output:
 
 **Document Analysis — Working:**
 - Two-pass pipeline end to end
-- DeepSeek Pass 2 producing human editorial voice
+- Gemini Flash Pass 2 producing human editorial voice
 - Progressive disclosure layout in frontend
 - Schema leakage eliminated from rendered output
 - All five prose sections generating correctly
@@ -231,7 +232,7 @@ Specific things that signal bad output:
 
 **Document Analysis:**
 - The two-pass architecture separation
-- DeepSeek as the Pass 2 model
+- The current Pass 2 model choice without explicit instruction
 - The five-section output structure
 - The rule that Pass 1 never renders to the user
 - The PDF sanitisation step order (must happen before Pass 1)

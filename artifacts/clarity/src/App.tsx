@@ -16,7 +16,16 @@ import DocumentView from "@/pages/document-view";
 import DocumentQA from "@/pages/document-qa";
 import Search from "@/pages/search";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      gcTime: 30 * 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+    },
+  },
+});
 
 function Router() {
   return (

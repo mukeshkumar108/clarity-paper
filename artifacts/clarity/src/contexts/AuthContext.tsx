@@ -25,6 +25,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     query: {
       retry: false,
       queryKey: getGetMeQueryKey(),
+      staleTime: 5 * 60_000,
     },
   });
   const queryClient = useQueryClient();
