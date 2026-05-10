@@ -19,6 +19,7 @@ User query
   → retrievePapers         (Semantic Scholar + OpenAlex + EuropePMC + CORE — all variants in parallel)
   → deduplicatePapers      (DOI + title fuzzy dedup, guideline filtering)
   → rerankByRelevance      (Cohere Rerank 4 Fast: semantic relevance score per paper, soft off-topic filter)
+  → applyTopicalVeto       (LLM: cheap conservative veto for obviously irrelevant intervention/condition mismatches)
   → enrichWithUnpaywall    (open-access PDF links, runs in parallel with synthesis)
   → rankPapers             (evidence scoring → evidenceBucket; relevance used as within-bucket tie-breaker)
   → judgeRetrievalQuality  (LLM: topical relevance, off-topic detection)

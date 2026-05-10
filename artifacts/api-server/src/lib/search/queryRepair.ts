@@ -4,6 +4,7 @@ import { retrievePapers } from "./retrieval";
 import { deduplicatePapers, filterGuidelineDocuments } from "./dedupe";
 import { rankPapers } from "./ranking";
 import { computeRetrievalQualityScore, filterTopicallyWeakPapers } from "./retrievalJudge";
+import { applyTopicalVeto } from "./topicalVeto";
 import { logger } from "../logger";
 import type {
   RankedPaper,
@@ -160,8 +161,12 @@ export async function repairRetrieval(
 
   const rawRepaired = await retrievePapers(repairQueries);
   const dedupedRepaired = filterGuidelineDocuments(deduplicatePapers(rawRepaired));
-  const repaired = filterTopicallyWeakPapers(
+  const vetoedRepaired = await applyTopicalVeto(
+    plan,
     rankPapers(dedupedRepaired, plan.entities),
+  );
+  const repaired = filterTopicallyWeakPapers(
+    vetoedRepaired,
     plan,
   );
 

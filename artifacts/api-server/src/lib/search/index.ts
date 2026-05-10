@@ -4,6 +4,7 @@ import { planResearch } from "./researchPlanner";
 import { retrievePapers } from "./retrieval";
 import { deduplicatePapers, filterGuidelineDocuments } from "./dedupe";
 import { rerankByRelevance } from "./reranker";
+import { applyTopicalVeto } from "./topicalVeto";
 import { rankPapers, buildEvidenceSnapshot } from "./ranking";
 import { synthesisePapers } from "./synthesizer";
 import { checkRetractionStatus } from "./openAlexClient";
@@ -334,11 +335,15 @@ export async function runSearch(
   // Runs after dedup so we don't waste rerank quota on duplicates. Fault-tolerant:
   // if reranker fails, papers get relevanceScore=0.5 and ranking proceeds unchanged.
   const rerankedDeduplicated = await rerankByRelevance(query, deduplicated);
+  const vetoedDeduplicated = await applyTopicalVeto(
+    plan,
+    rankPapers(rerankedDeduplicated, plan.entities),
+  );
 
   // 5. Rank + bucket (evidence quality hierarchy; relevance used as within-bucket tie-breaker)
   const t3 = Date.now();
   const rankedPapers = filterTopicallyWeakPapers(
-    rankPapers(rerankedDeduplicated, plan.entities),
+    vetoedDeduplicated,
     plan,
   );
   const rankMs = Date.now() - t3;
