@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { Link } from "wouter";
 import {
   useGetDocument,
@@ -12,6 +13,7 @@ import {
 } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ReadableDocumentView } from "@/components/readable-document-view";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -30,6 +32,12 @@ import {
   Info,
   CheckCircle2,
   BookOpen,
+  ShieldCheck,
+  ScanSearch,
+  Link2,
+  Quote,
+  FlaskConical,
+  ArrowUpRight,
   X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -81,6 +89,143 @@ const CLAIM_TYPE_LABELS: Record<string, string> = {
   theoretical: "Theoretical / model-based",
   speculative: "Speculative / hypothesis",
 };
+
+function normaliseTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2 && !STOPWORDS.has(token));
+}
+
+function deriveSupportType(strength?: string): EvidenceSupportType {
+  const level = strength?.toLowerCase() ?? "";
+  if (level.includes("strong") || level.includes("moderate")) return "direct";
+  if (level.includes("limited")) return "indirect";
+  if (level.includes("theoretical") || level.includes("speculative")) return "contextual";
+  return "general";
+}
+
+function supportTypeClasses(supportType: EvidenceSupportType): string {
+  if (supportType === "direct") {
+    return "border-forest-green-action/20 bg-forest-green-action/6 text-forest-green-action";
+  }
+  if (supportType === "indirect") {
+    return "border-goldenrod-accent/25 bg-goldenrod-accent/8 text-goldenrod-accent";
+  }
+  if (supportType === "contextual") {
+    return "border-[#7a6d94]/20 bg-[#7a6d94]/7 text-[#68557d]";
+  }
+  return "border-pebble-gray bg-pebble-gray/65 text-muted-stone";
+}
+
+function supportTypeLabel(supportType: EvidenceSupportType): string {
+  if (supportType === "direct") return "Direct support";
+  if (supportType === "indirect") return "Indirect support";
+  if (supportType === "contextual") return "Contextual";
+  return "General context";
+}
+
+function classifyEvidenceType(studyType?: string): string {
+  const value = studyType?.trim();
+  if (!value) return "Study evidence";
+  if (/meta/i.test(value)) return "Meta-analysis";
+  if (/\brct\b|random/i.test(value)) return "RCT";
+  if (/observ/i.test(value)) return "Observational";
+  if (/mechan/i.test(value)) return "Mechanistic";
+  if (/guideline/i.test(value)) return "Guideline";
+  if (/review/i.test(value)) return "Review";
+  return value;
+}
+
+function confidenceSummary(strength?: string, confidenceLevel?: string): string {
+  const support = strength?.trim();
+  const confidence = confidenceLevel?.trim();
+  if (support && confidence) return `${support} grounding · ${capitalise(confidence)} confidence`;
+  if (support) return `${support} grounding`;
+  if (confidence) return `${capitalise(confidence)} confidence`;
+  return "Grounding available";
+}
+
+function pickBestEvidence(
+  finding: { heading: string; body: string },
+  keyFindings: NonNullable<ViewAnalysis["keyFindings"]>,
+  studyType?: string,
+  confidenceLevel?: string,
+): GroundedEvidence | null {
+  const fallbackByIndex = keyFindings[0];
+  if (!fallbackByIndex) return null;
+
+  const findingTokens = new Set(normaliseTokens(`${finding.heading} ${finding.body}`));
+  const scored = keyFindings
+    .map((item, index) => {
+      const itemText = `${item.finding} ${item.plainEnglishMeaning} ${item.sourceText ?? ""} ${item.sourceInPaper}`;
+      const score = normaliseTokens(itemText).reduce((total, token) => total + (findingTokens.has(token) ? 1 : 0), 0);
+      return { item, index, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const chosen = scored[0]?.score > 0 ? scored[0]?.item : fallbackByIndex;
+  if (!chosen) return null;
+
+  return {
+    id: `${chosen.finding}-${chosen.sourceInPaper}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    title: finding.heading,
+    claimText: finding.body,
+    snippet: chosen.sourceText?.trim() || chosen.plainEnglishMeaning || chosen.finding,
+    sourceLabel: chosen.sourceInPaper || chosen.populationOrSample || "Source passage from paper",
+    supportType: deriveSupportType(chosen.strengthOfSupport),
+    confidenceLabel: confidenceSummary(chosen.strengthOfSupport, confidenceLevel),
+    evidenceType: classifyEvidenceType(studyType),
+  };
+}
+
+function parseGroundedAnswer(answer: string): ParsedAnswerSegment[] {
+  const matches = answer.matchAll(/\[(doc|general)\]\s*([\s\S]*?)(?=(?:\n?\[(?:doc|general)\])|$)/gi);
+  const parsed = Array.from(matches)
+    .map((match) => ({
+      label: match[1]?.toLowerCase() === "general" ? "general" as const : "doc" as const,
+      text: match[2]?.trim() ?? "",
+    }))
+    .filter((segment) => segment.text.length > 0);
+
+  if (parsed.length > 0) return parsed;
+
+  return [{ label: "doc", text: answer.trim() }];
+}
+
+function buildQuestionEvidence(
+  question: string,
+  answer: string,
+  keyFindings: NonNullable<ViewAnalysis["keyFindings"]>,
+  studyType?: string,
+  confidenceLevel?: string,
+): GroundedEvidence[] {
+  const queryTokens = new Set(normaliseTokens(`${question} ${answer}`));
+
+  return keyFindings
+    .map((item) => {
+      const itemText = `${item.finding} ${item.plainEnglishMeaning} ${item.sourceText ?? ""} ${item.populationOrSample} ${item.sourceInPaper}`;
+      const score = normaliseTokens(itemText).reduce((total, token) => total + (queryTokens.has(token) ? 1 : 0), 0);
+      return {
+        item,
+        score,
+      };
+    })
+    .filter(({ score, item }) => score > 0 || hasText(item.sourceText))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 2)
+    .map(({ item }, index) => ({
+      id: `question-${index}-${item.finding}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      title: question,
+      claimText: answer,
+      snippet: item.sourceText?.trim() || item.plainEnglishMeaning || item.finding,
+      sourceLabel: item.sourceInPaper || item.populationOrSample || "Source passage from paper",
+      supportType: deriveSupportType(item.strengthOfSupport),
+      confidenceLabel: confidenceSummary(item.strengthOfSupport, confidenceLevel),
+      evidenceType: classifyEvidenceType(studyType),
+    }));
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,9 +286,41 @@ type ViewAnalysis = {
     generalisability: string;
   };
   practicalUse?: { recommendation: string; reasoning: string; caution: string };
+  keyFindings?: Array<{
+    finding: string;
+    sourceInPaper: string;
+    populationOrSample: string;
+    effectDirection: string;
+    strengthOfSupport: string;
+    plainEnglishMeaning: string;
+    sourceText?: string | null;
+  }>;
 };
 
 type ViewQuestion = { id: number; question: string; answer: string };
+type EvidenceSupportType = "direct" | "indirect" | "contextual" | "general";
+type GroundedEvidence = {
+  id: string;
+  title: string;
+  claimText: string;
+  snippet: string;
+  sourceLabel: string;
+  supportType: EvidenceSupportType;
+  confidenceLabel: string;
+  evidenceType: string;
+};
+type ParsedAnswerSegment = {
+  label: "doc" | "general";
+  text: string;
+};
+
+const STOPWORDS = new Set([
+  "the", "and", "for", "with", "that", "this", "from", "into", "your", "have", "were",
+  "what", "when", "where", "which", "their", "there", "about", "because", "could", "would",
+  "should", "these", "those", "does", "than", "then", "them", "they", "been", "being", "also",
+  "into", "over", "under", "after", "before", "while", "across", "between", "among", "more",
+  "less", "most", "some", "such", "than", "very", "much", "many", "paper", "study", "document",
+]);
 
 // ─── Progress stages ──────────────────────────────────────────────────────────
 
@@ -214,61 +391,164 @@ function PaperCitation({ metadata }: { metadata?: ViewAnalysis["paperMetadata"] 
   );
 }
 
+function EvidenceCard({
+  evidence,
+  isActive,
+  compact = false,
+  onActivate,
+}: {
+  evidence: GroundedEvidence;
+  isActive: boolean;
+  compact?: boolean;
+  onActivate: (evidence: GroundedEvidence) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onActivate(evidence)}
+      className={cn(
+        "w-full rounded-[20px] border px-4 py-4 text-left transition-all duration-200",
+        compact ? "bg-white/88" : "bg-white",
+        isActive
+          ? "border-goldenrod-accent/35 shadow-[0_24px_70px_-42px_rgba(20,20,20,0.42)] ring-1 ring-goldenrod-accent/20"
+          : "border-pebble-gray/90 shadow-subtle hover:border-inkwell/20 hover:bg-canvas-parchment/55",
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span className={cn("rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]", supportTypeClasses(evidence.supportType))}>
+          {supportTypeLabel(evidence.supportType)}
+        </span>
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-pebble-gray bg-canvas-parchment/75 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-stone">
+          <FlaskConical className="h-3 w-3" />
+          {evidence.evidenceType}
+        </span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-stone">
+          {evidence.confidenceLabel}
+        </span>
+      </div>
+
+      <p className="mt-3 text-[14px] leading-[1.75] text-inkwell/82">
+        <Quote className="mr-1 inline h-3.5 w-3.5 -translate-y-[1px] text-muted-stone/60" />
+        {evidence.snippet}
+      </p>
+
+      <div className="mt-3 flex items-center justify-between gap-4">
+        <p className="text-[11px] leading-[1.6] text-muted-stone">
+          {evidence.sourceLabel}
+        </p>
+        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-deep-shadow">
+          <Link2 className="h-3.5 w-3.5" />
+          Anchor in source
+          <ArrowUpRight className="h-3.5 w-3.5" />
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function QuestionAnswerCard({
+  question,
+  answer,
+  supportingEvidence,
+  activeEvidenceId,
+  onActivateEvidence,
+}: {
+  question: string;
+  answer: string;
+  supportingEvidence: GroundedEvidence[];
+  activeEvidenceId: string | null;
+  onActivateEvidence: (evidence: GroundedEvidence) => void;
+}) {
+  const segments = parseGroundedAnswer(answer);
+  const [showEvidence, setShowEvidence] = useState(false);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <div className="max-w-[88%] rounded-2xl bg-inkwell px-4 py-3 text-[14px] leading-[1.6] text-canvas-parchment shadow-subtle">
+          {question}
+        </div>
+      </div>
+      <div className="flex justify-start">
+        <div className="max-w-[95%] rounded-2xl border border-pebble-gray bg-white p-4 shadow-subtle">
+          <div className="space-y-3">
+            {segments.map((segment, index) => (
+              <div key={`${segment.label}-${index}`} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
+                    segment.label === "doc"
+                      ? "border-forest-green-action/20 bg-forest-green-action/6 text-forest-green-action"
+                      : "border-pebble-gray bg-pebble-gray/55 text-muted-stone",
+                  )}>
+                    [{segment.label}]
+                  </span>
+                </div>
+                <div className="readable-prose prose prose-stone max-w-none text-[14px]">
+                  <ReactMarkdown>{segment.text}</ReactMarkdown>
+                </div>
+              </div>
+            ))}
+
+            {supportingEvidence.length > 0 && (
+              <div className="rounded-[18px] border border-pebble-gray/85 bg-canvas-parchment/65 px-3 py-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEvidence((value) => !value)}
+                  className="flex w-full items-center justify-between gap-3 text-left"
+                >
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-stone">Supporting evidence</p>
+                    <p className="text-[13px] leading-[1.65] text-inkwell/74">
+                      Inspect the exact passages this answer leans on.
+                    </p>
+                  </div>
+                  <ScanSearch className={cn("h-4 w-4 text-muted-stone transition-transform", showEvidence && "rotate-45")} />
+                </button>
+
+                {showEvidence && (
+                  <div className="mt-3 space-y-2.5">
+                    {supportingEvidence.map((evidence) => (
+                      <EvidenceCard
+                        key={evidence.id}
+                        evidence={evidence}
+                        compact
+                        isActive={activeEvidenceId === evidence.id}
+                        onActivate={onActivateEvidence}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Source pane (left panel) ─────────────────────────────────────────────────
 
 function SourcePane({
   fallbackTitle,
   metadata,
   extractedText,
+  activeEvidence,
 }: {
   fallbackTitle: string;
   metadata?: ViewAnalysis["paperMetadata"];
   extractedText: string | null | undefined;
+  activeEvidence: GroundedEvidence | null;
 }) {
-  const paperTitle = metadata?.title?.trim() || fallbackTitle;
-  const authors = metadata?.authors?.filter(Boolean) ?? [];
-  const journal = metadata?.journal?.trim() || "";
-  const year = metadata?.publicationYear?.trim() || "";
-
-  const citationLine = authors.length > 0
-    ? [authors.join(", "), year, journal].filter(Boolean).join(" · ")
-    : [year, journal].filter(Boolean).join(" · ");
-
-  const sourceText = extractedText ?? "";
-
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-canvas-parchment/60">
-      {/* Paper metadata */}
-      <div className="px-5 pt-6 pb-5 border-b border-pebble-gray shrink-0 space-y-2.5">
-        <div className="flex items-start gap-2">
-          <BookOpen className="w-3.5 h-3.5 text-muted-stone/50 mt-[3px] shrink-0" />
-          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-stone/60">Source</span>
-        </div>
-        <h2 className="text-[14px] font-semibold text-deep-shadow leading-[1.5] tracking-tight">
-          {paperTitle}
-        </h2>
-        {citationLine && (
-          <p className="text-[11.5px] text-muted-stone leading-[1.65]">{citationLine}</p>
-        )}
-      </div>
-
-      {/* Source content */}
-      {sourceText ? (
-        <ScrollArea className="flex-1">
-          <div className="px-5 py-6 selection:bg-highlight-beige selection:text-inkwell">
-            <p className="font-serif text-[13px] leading-[1.95] text-inkwell/65 whitespace-pre-wrap break-words">
-              {sourceText}
-            </p>
-          </div>
-        </ScrollArea>
-      ) : (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <p className="text-[12px] text-muted-stone/50 text-center leading-[1.7]">
-            Source text not available
-          </p>
-        </div>
-      )}
-    </div>
+    <ReadableDocumentView
+      fallbackTitle={fallbackTitle}
+      metadata={metadata}
+      extractedText={extractedText}
+      activeSnippet={activeEvidence?.snippet ?? null}
+      activeEvidenceLabel={activeEvidence ? `${activeEvidence.title} · ${activeEvidence.sourceLabel}` : null}
+    />
   );
 }
 
@@ -285,6 +565,7 @@ export default function DocumentView({ id }: { id: string }) {
   const [chatQuestion, setChatQuestion] = useState("");
   const [progressStage, setProgressStage] = useState(0);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const [activeEvidenceId, setActiveEvidenceId] = useState<string | null>(null);
   const [sourcePanelSize, setSourcePanelSize] = useState<number>(() => {
     const saved = localStorage.getItem("clarity-source-panel-size");
     return saved ? parseFloat(saved) : 42;
@@ -576,6 +857,49 @@ export default function DocumentView({ id }: { id: string }) {
   const confLabel = confLevel ? `${capitalise(confLevel)} confidence` : null;
   const claimType = viewAnalysis?.whatPaperActuallyShows?.claimType ?? "";
   const claimLabel = CLAIM_TYPE_LABELS[claimType] ?? claimType;
+  const keyFindings = viewAnalysis?.keyFindings ?? [];
+  const findingEvidence = useMemo(
+    () =>
+      editorialFindings
+        .map((finding, index) => {
+          const candidatePool = index < keyFindings.length ? [keyFindings[index], ...keyFindings.filter((_, itemIndex) => itemIndex !== index)] : keyFindings;
+          return pickBestEvidence(
+            finding,
+            candidatePool.filter(Boolean) as NonNullable<ViewAnalysis["keyFindings"]>,
+            viewAnalysis?.whatPaperActuallyShows?.studyType || viewAnalysis?.evidenceQuality?.studyType,
+            confLevel,
+          );
+        }),
+    [editorialFindings, keyFindings, viewAnalysis?.whatPaperActuallyShows?.studyType, viewAnalysis?.evidenceQuality?.studyType, confLevel],
+  );
+  const questionEvidence = useMemo(
+    () =>
+      ((questions as ViewQuestion[] | undefined) ?? []).map((question) => ({
+        id: question.id,
+        evidence: buildQuestionEvidence(
+          question.question,
+          question.answer,
+          keyFindings,
+          viewAnalysis?.whatPaperActuallyShows?.studyType || viewAnalysis?.evidenceQuality?.studyType,
+          confLevel,
+        ),
+      })),
+    [questions, keyFindings, viewAnalysis?.whatPaperActuallyShows?.studyType, viewAnalysis?.evidenceQuality?.studyType, confLevel],
+  );
+  const allEvidence = useMemo(
+    () => [
+      ...findingEvidence.filter(Boolean) as GroundedEvidence[],
+      ...questionEvidence.flatMap((item) => item.evidence),
+    ],
+    [findingEvidence, questionEvidence],
+  );
+  const activeEvidence = allEvidence.find((item) => item.id === activeEvidenceId) ?? null;
+
+  useEffect(() => {
+    if (!activeEvidenceId && findingEvidence[0]) {
+      setActiveEvidenceId(findingEvidence[0].id);
+    }
+  }, [activeEvidenceId, findingEvidence]);
 
   return (
     <DashboardLayout immersive>
@@ -632,6 +956,7 @@ export default function DocumentView({ id }: { id: string }) {
               fallbackTitle={document.title}
               metadata={viewAnalysis?.paperMetadata}
               extractedText={document.extractedText}
+              activeEvidence={activeEvidence}
             />
           </ResizablePanel>
 
@@ -681,6 +1006,29 @@ export default function DocumentView({ id }: { id: string }) {
                       </p>
                     </motion.header>
 
+                    {hasItems(allEvidence) && (
+                      <section className="rounded-[24px] border border-pebble-gray bg-canvas-parchment/45 p-5">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-muted-stone">
+                              <ShieldCheck className="h-4 w-4 text-forest-green-action" />
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">Visible grounding</span>
+                            </div>
+                            <p className="max-w-2xl text-[14px] leading-[1.75] text-inkwell/76">
+                              Click any finding or supporting card and Clarity will anchor the exact passage in the source pane.
+                            </p>
+                          </div>
+                          {activeEvidence && (
+                            <div className="rounded-[18px] border border-goldenrod-accent/25 bg-white/80 px-4 py-3 shadow-subtle md:max-w-sm">
+                              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-goldenrod-accent">Current anchor</p>
+                              <p className="mt-1 text-[13px] font-medium leading-[1.65] text-deep-shadow">{activeEvidence.title}</p>
+                              <p className="mt-1 text-[12px] leading-[1.65] text-muted-stone">{activeEvidence.sourceLabel}</p>
+                            </div>
+                          )}
+                        </div>
+                      </section>
+                    )}
+
                     {/* Findings */}
                     {hasItems(editorialFindings) && (
                       <section className="space-y-8 pt-2">
@@ -694,12 +1042,43 @@ export default function DocumentView({ id }: { id: string }) {
                               initial={{ opacity: 0, y: 8 }}
                               animate={{ opacity: 1, y: 0 }}
                               transition={{ duration: 0.25, delay: idx * 0.08, ease: "easeOut" }}
-                              className="space-y-2.5"
+                              className="space-y-3"
                             >
-                              <h4 className="text-[16px] font-semibold text-deep-shadow tracking-tight leading-snug">
-                                {finding.heading}
-                              </h4>
-                              <p className="text-[15px] leading-[1.75] text-inkwell/85">{finding.body}</p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const evidence = findingEvidence[idx];
+                                  if (evidence) setActiveEvidenceId(evidence.id);
+                                }}
+                                className={cn(
+                                  "w-full rounded-[22px] border px-5 py-5 text-left transition-all duration-200",
+                                  findingEvidence[idx] && activeEvidenceId === findingEvidence[idx]?.id
+                                    ? "border-goldenrod-accent/30 bg-[#fffaf0] shadow-[0_28px_80px_-48px_rgba(20,20,20,0.45)]"
+                                    : "border-transparent hover:border-pebble-gray hover:bg-canvas-parchment/45",
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-4">
+                                  <div className="space-y-2.5">
+                                    <h4 className="text-[16px] font-semibold text-deep-shadow tracking-tight leading-snug">
+                                      {finding.heading}
+                                    </h4>
+                                    <p className="text-[15px] leading-[1.8] text-inkwell/85">{finding.body}</p>
+                                  </div>
+                                  {findingEvidence[idx] && (
+                                    <div className={cn("shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]", supportTypeClasses(findingEvidence[idx]!.supportType))}>
+                                      {supportTypeLabel(findingEvidence[idx]!.supportType)}
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+
+                              {findingEvidence[idx] && (
+                                <EvidenceCard
+                                  evidence={findingEvidence[idx]!}
+                                  isActive={activeEvidenceId === findingEvidence[idx]!.id}
+                                  onActivate={(evidence) => setActiveEvidenceId(evidence.id)}
+                                />
+                              )}
                             </motion.div>
                           ))}
                         </div>
@@ -884,9 +1263,17 @@ export default function DocumentView({ id }: { id: string }) {
                 style={{ minWidth: 0 }}
               >
                 <div className="px-5 py-3 border-b border-pebble-gray bg-pebble-gray/10 flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-deep-shadow">
-                    <MessageSquare className="w-4 h-4" />
-                    Research Q&A
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-deep-shadow">
+                      <MessageSquare className="w-4 h-4" />
+                      Research Q&A
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.14em]">
+                      <span className="rounded-full border border-forest-green-action/20 bg-forest-green-action/6 px-2.5 py-1 font-semibold text-forest-green-action">[doc]</span>
+                      <span className="text-muted-stone">grounded in this paper</span>
+                      <span className="rounded-full border border-pebble-gray bg-pebble-gray/60 px-2.5 py-1 font-semibold text-muted-stone">[general]</span>
+                      <span className="text-muted-stone">background context</span>
+                    </div>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => setShowChat(false)} className="h-8 w-8 rounded-lg hover:bg-pebble-gray/60">
                     <X className="w-4 h-4" />
@@ -905,18 +1292,14 @@ export default function DocumentView({ id }: { id: string }) {
                       </div>
                     )}
                     {(questions as ViewQuestion[] | undefined)?.map((q) => (
-                      <div key={q.id} className="space-y-3">
-                        <div className="flex justify-end">
-                          <div className="bg-inkwell text-canvas-parchment px-4 py-3 rounded-2xl max-w-[88%] text-[14px] leading-[1.6] shadow-subtle">
-                            {q.question}
-                          </div>
-                        </div>
-                        <div className="flex justify-start">
-                          <div className="bg-white p-4 rounded-2xl border border-pebble-gray max-w-[95%] text-[14px] leading-[1.75] text-inkwell shadow-subtle">
-                            {q.answer}
-                          </div>
-                        </div>
-                      </div>
+                      <QuestionAnswerCard
+                        key={q.id}
+                        question={q.question}
+                        answer={q.answer}
+                        supportingEvidence={questionEvidence.find((item) => item.id === q.id)?.evidence ?? []}
+                        activeEvidenceId={activeEvidenceId}
+                        onActivateEvidence={(evidence) => setActiveEvidenceId(evidence.id)}
+                      />
                     ))}
                     {pendingQuestion && (
                       <div className="flex justify-end">

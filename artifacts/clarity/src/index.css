@@ -117,6 +117,64 @@
   .studio-main-content {
     @apply flex-1 flex flex-col min-w-0 overflow-auto relative;
   }
-}
 
+  .readable-prose {
+    --tw-prose-body: color-mix(in srgb, var(--color-inkwell) 78%, white);
+    --tw-prose-headings: var(--color-deep-shadow);
+    --tw-prose-lead: color-mix(in srgb, var(--color-muted-stone) 92%, white);
+    --tw-prose-links: var(--color-forest-green-action);
+    --tw-prose-bold: var(--color-deep-shadow);
+    --tw-prose-counters: color-mix(in srgb, var(--color-muted-stone) 90%, white);
+    --tw-prose-bullets: color-mix(in srgb, var(--color-goldenrod-accent) 75%, white);
+    --tw-prose-hr: color-mix(in srgb, var(--color-pebble-gray) 92%, white);
+    --tw-prose-quotes: color-mix(in srgb, var(--color-inkwell) 84%, white);
+    --tw-prose-quote-borders: color-mix(in srgb, var(--color-goldenrod-accent) 55%, white);
+    --tw-prose-captions: color-mix(in srgb, var(--color-muted-stone) 92%, white);
+    --tw-prose-code: var(--color-deep-shadow);
+    --tw-prose-pre-code: #f4f4ef;
+    --tw-prose-pre-bg: #171916;
+    --tw-prose-th-borders: color-mix(in srgb, var(--color-pebble-gray) 94%, white);
+    --tw-prose-td-borders: color-mix(in srgb, var(--color-pebble-gray) 86%, white);
+  }
+
+  .readable-prose :where(h1, h2, h3, h4) {
+    @apply font-sans tracking-tight text-deep-shadow;
+  }
+
+  .readable-prose :where(h1) {
+    @apply text-[1.95rem] leading-[1.14];
+  }
+
+  .readable-prose :where(h2) {
+    @apply text-[1.4rem] leading-[1.22] mt-12;
+  }
+
+  .readable-prose :where(h3) {
+    @apply text-[1.08rem] leading-[1.35] mt-9;
+  }
+
+  .readable-prose :where(p, li, blockquote) {
+    @apply text-[15px] leading-[1.95] md:text-[16px] md:leading-[2];
+  }
+
+  .readable-prose :where(p) {
+    @apply my-5;
+  }
+
+  .readable-prose :where(ul, ol) {
+    @apply my-6 pl-6;
+  }
+
+  .readable-prose :where(li) {
+    @apply my-2;
+  }
+
+  .readable-prose :where(code) {
+    @apply font-mono;
+  }
+
+  .readable-prose :where(hr) {
+    @apply my-10;
+  }
+}
 
