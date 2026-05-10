@@ -323,6 +323,7 @@ Important:
     const raw = await callLLM(STRUCTURED_SYSTEM_PROMPT, userMessage, structuredAnalysisSchema, {
       model: STRUCTURED_MODEL,
       temperature: 0.1,
+      timeoutMs: 90_000,
     });
     return structuredAnalysisSchema.parse(JSON.parse(raw));
   } catch (err) {
@@ -351,6 +352,7 @@ async function runEditorialPass(
     const raw = await callLLM(systemPrompt, userMessage, editorialSummarySchema, {
       model: EDITORIAL_MODEL,
       temperature: 0.2,
+      timeoutMs: 180_000,
     });
     return editorialSummarySchema.parse(JSON.parse(raw));
   } catch (err) {

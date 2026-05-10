@@ -102,14 +102,7 @@ export default function DocumentNew() {
             { id: doc.id },
             {
               onSuccess: () => setLocation(`/documents/${doc.id}`),
-              onError: (err: unknown) => {
-                toast({
-                  title: "Analysis failed",
-                  description: (err as { error?: string })?.error ?? "Something went wrong.",
-                  variant: "destructive",
-                });
-                setLocation(`/documents/${doc.id}`);
-              },
+              onError: () => setLocation(`/documents/${doc.id}`),
             },
           );
         },
@@ -150,14 +143,7 @@ export default function DocumentNew() {
         { id: doc.id },
         {
           onSuccess: () => setLocation(`/documents/${doc.id}`),
-          onError: (err: unknown) => {
-            toast({
-              title: "Analysis failed",
-              description: (err as { error?: string })?.error ?? "Something went wrong.",
-              variant: "destructive",
-            });
-            setLocation(`/documents/${doc.id}`);
-          },
+          onError: () => setLocation(`/documents/${doc.id}`),
         },
       );
     } catch {

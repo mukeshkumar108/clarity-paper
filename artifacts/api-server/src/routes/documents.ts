@@ -232,74 +232,75 @@ router.post("/documents/:id/analyse", requireAuth, async (req, res): Promise<voi
     .from(documentAnalysisTable)
     .where(eq(documentAnalysisTable.documentId, id));
 
-  // Update status to analysing
+  // Set status to analysing and respond immediately — the LLM pipeline runs
+  // in the background so the client is not blocked waiting for the HTTP response.
   await db.update(documentsTable).set({ status: "analysing" }).where(eq(documentsTable.id, id));
+  res.json({ status: "analysing", documentId: id });
 
-  try {
-    const result = await analyseDocument(
-      doc.extractedText,
-      doc.documentType ?? "",
-      doc.researchField ?? "",
-      doc.goal ?? "",
-      user.preferredLanguage ?? "English",
-    );
-    const stored = packAnalysisForStorage(result);
-    const analysisPayload = {
-      documentId: id,
-      briefSummary: stored.briefSummary,
-      plainEnglishSummary: stored.plainEnglishSummary,
-      documentType: stored.documentType,
-      keyPoints: stored.keyPoints,
-      keyFindings: stored.keyFindings,
-      methodology: stored.methodology,
-      limitations: stored.limitations,
-      gotchas: stored.gotchas,
-      conflictingInterests: stored.conflictingInterests,
-      practicalApplications: stored.practicalApplications,
-      unusualTerms: stored.unusualTerms,
-      missingInfo: stored.missingInfo,
-      questionsToAsk: stored.questionsToAsk,
-      confidenceLevel: stored.confidenceLevel as "low" | "medium" | "high",
-      confidenceNotes: stored.confidenceNotes,
-      isDemo: result.isDemo,
-    };
+  // Background pipeline — errors are caught internally and written to the DB.
+  void (async () => {
+    try {
+      const result = await analyseDocument(
+        doc.extractedText!,
+        doc.documentType ?? "",
+        doc.researchField ?? "",
+        doc.goal ?? "",
+        user.preferredLanguage ?? "English",
+      );
+      const stored = packAnalysisForStorage(result);
+      const analysisPayload = {
+        documentId: id,
+        briefSummary: stored.briefSummary,
+        plainEnglishSummary: stored.plainEnglishSummary,
+        documentType: stored.documentType,
+        keyPoints: stored.keyPoints,
+        keyFindings: stored.keyFindings,
+        methodology: stored.methodology,
+        limitations: stored.limitations,
+        gotchas: stored.gotchas,
+        conflictingInterests: stored.conflictingInterests,
+        practicalApplications: stored.practicalApplications,
+        unusualTerms: stored.unusualTerms,
+        missingInfo: stored.missingInfo,
+        questionsToAsk: stored.questionsToAsk,
+        confidenceLevel: stored.confidenceLevel as "low" | "medium" | "high",
+        confidenceNotes: stored.confidenceNotes,
+        isDemo: result.isDemo,
+      };
 
-    if (existing) {
+      if (existing) {
+        await db
+          .update(documentAnalysisTable)
+          .set(analysisPayload)
+          .where(eq(documentAnalysisTable.documentId, id));
+        logger.info({ documentId: id }, "Document analysis regenerated");
+      } else {
+        await db.insert(documentAnalysisTable).values(analysisPayload);
+        logger.info({ documentId: id }, "Document analysis created");
+      }
+
+      const extractedTitle = result.paperMetadata?.title?.trim();
       await db
-        .update(documentAnalysisTable)
-        .set(analysisPayload)
-        .where(eq(documentAnalysisTable.documentId, id));
-      req.log.info({ documentId: id }, "Document analysis regenerated");
-    } else {
-      await db.insert(documentAnalysisTable).values(analysisPayload);
-      req.log.info({ documentId: id }, "Document analysis created");
+        .update(documentsTable)
+        .set({
+          status: "completed",
+          confidenceLevel: result.confidenceLevel as "low" | "medium" | "high",
+          ...(extractedTitle ? { title: extractedTitle } : {}),
+        })
+        .where(eq(documentsTable.id, id));
+
+      await db.insert(usageEventsTable).values({
+        userId: user.id,
+        eventType: "document_analysed",
+        documentId: id,
+      });
+
+      logger.info({ documentId: id }, "Background analysis complete");
+    } catch (err) {
+      logger.error({ err, documentId: id }, "Background analysis failed");
+      await db.update(documentsTable).set({ status: "failed" }).where(eq(documentsTable.id, id));
     }
-
-    const extractedTitle = result.paperMetadata?.title?.trim();
-    const [updatedDoc] = await db
-      .update(documentsTable)
-      .set({
-        status: "completed",
-        confidenceLevel: result.confidenceLevel as "low" | "medium" | "high",
-        ...(extractedTitle ? { title: extractedTitle } : {}),
-      })
-      .where(eq(documentsTable.id, id))
-      .returning();
-
-    // Record usage event
-    await db.insert(usageEventsTable).values({
-      userId: user.id,
-      eventType: "document_analysed",
-      documentId: id,
-    });
-
-    res.json(mapDocument(updatedDoc));
-  } catch (err) {
-    logger.error({ err, documentId: id }, "Analysis failed");
-    await db.update(documentsTable).set({ status: "failed" }).where(eq(documentsTable.id, id));
-    const message = err instanceof Error ? err.message : "Analysis failed";
-    res.status(500).json({ error: message === "DEMO_MODE" ? "Demo mode" : message });
-  }
+  })();
 });
 
 // Get document analysis

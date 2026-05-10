@@ -64,38 +64,43 @@ export async function callLLM(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  let response: Response;
   try {
-    response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        "HTTP-Referer": process.env.REPLIT_DOMAINS?.split(",")[0] ?? "http://localhost",
-        "X-Title": "Clarity Document Analysis",
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch (err: unknown) {
-    clearTimeout(timer);
-    if ((err as { name?: string }).name === "AbortError") {
-      throw new Error(`LLM_TIMEOUT after ${timeoutMs}ms`);
+    let response: Response;
+    try {
+      response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+          "HTTP-Referer": process.env.REPLIT_DOMAINS?.split(",")[0] ?? "http://localhost",
+          "X-Title": "Clarity Document Analysis",
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } catch (err: unknown) {
+      if ((err as { name?: string }).name === "AbortError") {
+        throw new Error(`LLM_TIMEOUT after ${timeoutMs}ms`);
+      }
+      throw err;
     }
-    throw err;
-  }
-  clearTimeout(timer);
 
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => "");
-    logger.error({ status: response.status, body: errorBody }, "OpenRouter API error");
-    throw new Error(`LLM request failed: ${response.status}`);
-  }
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      logger.error({ status: response.status, body: errorBody }, "OpenRouter API error");
+      throw new Error(`LLM request failed: ${response.status}`);
+    }
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Empty LLM response");
-  return content;
+    // Keep abort signal active while reading response body — slow models (e.g. DeepSeek)
+    // can stream tokens for minutes after headers arrive, so we must not clear the timer
+    // until the full body is consumed.
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) throw new Error("Empty LLM response");
+    return content;
+  } finally {
+    clearTimeout(timer);
+  }
 }

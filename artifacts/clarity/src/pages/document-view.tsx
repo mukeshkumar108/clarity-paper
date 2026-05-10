@@ -566,6 +566,7 @@ export default function DocumentView({ id }: { id: string }) {
   const [progressStage, setProgressStage] = useState(0);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [activeEvidenceId, setActiveEvidenceId] = useState<string | null>(null);
+  const [pollingTimedOut, setPollingTimedOut] = useState(false);
   const [sourcePanelSize, setSourcePanelSize] = useState<number>(() => {
     const saved = localStorage.getItem("clarity-source-panel-size");
     return saved ? parseFloat(saved) : 42;
@@ -592,12 +593,14 @@ export default function DocumentView({ id }: { id: string }) {
   useEffect(() => {
     if (document?.status === "analysing") {
       pollCountRef.current = 0;
+      setPollingTimedOut(false);
       pollRef.current = setInterval(() => {
         pollCountRef.current++;
-        if (pollCountRef.current <= 60) {
+        if (pollCountRef.current <= 80) {
           refetchDoc();
         } else {
           if (pollRef.current) clearInterval(pollRef.current);
+          setPollingTimedOut(true);
         }
       }, 3000);
       const timers = PROGRESS_STAGES.map((stage, index) =>
@@ -690,9 +693,42 @@ export default function DocumentView({ id }: { id: string }) {
     );
   }
 
+  // ── Polling timed out ────────────────────────────────────────────────────────
+
+  if (pollingTimedOut && document?.status === "analysing") {
+    return (
+      <DashboardLayout>
+        <div className="h-[70vh] flex flex-col items-center justify-center text-center px-4">
+          <div className="w-16 h-16 bg-goldenrod-accent/10 text-goldenrod-accent rounded-full flex items-center justify-center mb-6">
+            <Clock className="w-8 h-8" />
+          </div>
+          <h2 className="text-[24px] font-semibold text-deep-shadow mb-3 leading-tight">
+            Still working on it
+          </h2>
+          <p className="text-muted-stone max-w-md mb-8 leading-[1.7] text-[15px]">
+            Analysis is taking longer than usual. Check back in a minute — it should be ready soon.
+          </p>
+          <div className="flex gap-3 flex-wrap justify-center">
+            <Button asChild variant="outline">
+              <Link href="/dashboard">Back to Dashboard</Link>
+            </Button>
+            <Button
+              className="bg-onyx-outline border-onyx-outline hover:bg-onyx-outline/92"
+              onClick={() => { setPollingTimedOut(false); refetchDoc(); }}
+            >
+              <RefreshCw className="w-4 h-4" />
+              Check again
+            </Button>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   // ── Error / failed ───────────────────────────────────────────────────────────
 
   if (docError || (document && document.status === "failed") || analysisError) {
+    const isDemo = document?.isDemo;
     const failedTwice = analyseDocMutation.failureCount >= 1;
     return (
       <DashboardLayout>
@@ -701,18 +737,20 @@ export default function DocumentView({ id }: { id: string }) {
             <AlertCircle className="w-8 h-8" />
           </div>
           <h2 className="text-[24px] font-semibold text-deep-shadow mb-3 leading-tight">
-            We couldn't analyse this paper.
+            {isDemo ? "Demo paper unavailable" : "We couldn't analyse this paper."}
           </h2>
           <p className="text-muted-stone max-w-md mb-8 leading-[1.7] text-[15px]">
-            {failedTwice
-              ? "This paper may have complex formatting our reader struggles with. Try downloading the abstract text and pasting it instead — that usually works."
-              : "This sometimes happens with complex formatting. Try uploading it again or paste the abstract text directly."}
+            {isDemo
+              ? "This demo paper's analysis isn't ready yet. Try uploading your own paper or pasting an abstract to see Clarity in action."
+              : failedTwice
+                ? "This paper may have complex formatting our reader struggles with. Try downloading the abstract text and pasting it instead — that usually works."
+                : "This sometimes happens with complex formatting. Try uploading it again or paste the abstract text directly."}
           </p>
           <div className="flex gap-3 flex-wrap justify-center">
             <Button asChild variant="outline">
               <Link href="/documents/new">Paste text instead</Link>
             </Button>
-            {!failedTwice && (
+            {!isDemo && !failedTwice && (
               <Button
                 className="bg-onyx-outline border-onyx-outline hover:bg-onyx-outline/92"
                 onClick={handleAnalyse}
@@ -789,6 +827,16 @@ export default function DocumentView({ id }: { id: string }) {
     );
   }
 
+  // ── Analysis loading ─────────────────────────────────────────────────────────
+
+  if (analysisLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-canvas-parchment">
+        <Loader2 className="w-10 h-10 animate-spin text-inkwell/20" />
+      </div>
+    );
+  }
+
   // ── Analysis missing ─────────────────────────────────────────────────────────
 
   if (!analysis && document?.status === "completed") {
@@ -802,10 +850,12 @@ export default function DocumentView({ id }: { id: string }) {
           <p className="text-muted-stone max-w-md mb-8 leading-[1.7] text-[15px]">
             We couldn't find the results for this paper. Try running the analysis again.
           </p>
-          <Button className="bg-onyx-outline border-onyx-outline hover:bg-onyx-outline/92" onClick={handleAnalyse} disabled={analyseDocMutation.isPending}>
-            {analyseDocMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            Run analysis
-          </Button>
+          {!document.isDemo && (
+            <Button className="bg-onyx-outline border-onyx-outline hover:bg-onyx-outline/92" onClick={handleAnalyse} disabled={analyseDocMutation.isPending}>
+              {analyseDocMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Run analysis
+            </Button>
+          )}
         </div>
       </DashboardLayout>
     );
