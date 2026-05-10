@@ -95,7 +95,7 @@ export const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      setLocation("/dashboard");
+      setLocation("/search");
     }
   }, [isAuthenticated, isLoading, setLocation]);
 

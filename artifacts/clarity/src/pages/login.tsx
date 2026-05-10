@@ -22,7 +22,7 @@ export default function Login() {
       {
         onSuccess: (data: LoginMutationResult) => {
           queryClient.setQueryData(getGetMeQueryKey(), data.user);
-          setLocation("/dashboard");
+          setLocation("/search");
         },
         onError: () => {
           toast({

@@ -23,9 +23,14 @@ export type SearchState =
 const STUB_PLAN: SearchResult["plan"] = {
   intentType: "topic_exploration",
   userQuestion: "",
+  detectedLanguage: "en",
+  responseLanguage: "en",
+  normalizedEnglishQuestion: "",
   entities: [],
   hiddenGoals: [],
   queryVariants: [],
+  directQueryVariants: [],
+  contextQueryVariants: [],
   followUpQuestions: [],
 };
 

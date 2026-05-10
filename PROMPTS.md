@@ -179,7 +179,7 @@ Return strict JSON only matching the schema exactly.
 ## Search: Synthesis Prompt
 **Location:** `artifacts/api-server/src/lib/search/synthesizer.ts` — `SYNTHESIS_SYSTEM_PROMPT`
 
-**Purpose:** Generates the `synthesisText` field in `SearchResult`. This is a 3-4 sentence navigation aid, not a verdict. Papers are the authority; the synthesis orients the user.
+**Purpose:** Generates the `synthesisText` field in `SearchResult`. This is a short editorial first read of the evidence, not a verdict. Papers are the authority; the synthesis orients the user in Clarity's voice.
 
 **Hard constraints (never remove):**
 
@@ -215,6 +215,13 @@ Do not smooth over disagreement.
 - The planner detects the user's language separately from retrieval
 - Retrieval queries are normalized into English for literature search
 - `synthesisText`, `paperSummaries`, and `followUpOptions` should be written in the user's response language
+
+**Voice bar:**
+- Open with the human version of the question, not "the available abstracts suggest"
+- Sound like the first 20 seconds of a strong explanation, not an academic recap
+- Lead with the real story, then name the catch early
+- Include one concrete detail when the evidence supports it
+- Make uncertainty feel like judgment, not legal caution
 
 ---
 

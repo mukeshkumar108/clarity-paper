@@ -93,7 +93,19 @@ export default function Search() {
       ? {
           sessionId: 0,
           query: state.query,
-          plan: { intentType: "topic_exploration", userQuestion: state.query, entities: [], hiddenGoals: [], queryVariants: [], followUpQuestions: [] },
+          plan: {
+            intentType: "topic_exploration",
+            userQuestion: state.query,
+            detectedLanguage: "en",
+            responseLanguage: "en",
+            normalizedEnglishQuestion: state.query,
+            entities: [],
+            hiddenGoals: [],
+            queryVariants: [],
+            directQueryVariants: [],
+            contextQueryVariants: [],
+            followUpQuestions: [],
+          },
           papers: state.papers,
           evidenceSnapshot: state.evidenceSnapshot,
           noEvidence: state.noEvidence,
@@ -123,9 +135,9 @@ export default function Search() {
             </h1>
           </div>
           <p className="text-[15px] text-muted-stone max-w-[60ch] leading-relaxed">
-            Ask any health or science question. We search across millions of
-            papers and give you an honest synthesis of what the evidence
-            actually shows.
+            Start with the messy version of the question. We pull the most
+            relevant papers, tell you the real story in plain English, and let
+            you inspect the evidence yourself.
           </p>
         </header>
 

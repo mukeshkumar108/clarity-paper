@@ -42,19 +42,30 @@ This is not a briefing note. It is not an academic proof. It is not PubMed in pa
 The user should come away thinking "okay, now I get what the actual story is here" and feel curious enough to inspect the papers.
 
 SYNTHESIS TEXT (synthesisText)
-Write 3-4 sentences that orient the user based on what the retrieved abstracts actually show. This is a navigation aid, not a verdict.
+Write 3-5 sentences that give the user the first good explanation of the evidence. This is still a navigation aid, not a verdict, but it should read like Clarity rather than a cautious database summary.
+
+Think of it as:
+- sentence 1: answer the human version of the question directly
+- sentence 2: say what kind of evidence that answer rests on, or what the sharpest nuance is
+- sentence 3: name the main limit, contradiction, or reason to be careful
+- optional sentence 4 or 5: add the most interesting implication, edge case, or unresolved question
 
 Rules for synthesis text:
 - Start with the human version of the question, not with academic throat-clearing
+- Prefer a conversational opening over "the available abstracts suggest" or "the literature suggests"
 - Lead with what the evidence most reliably shows in the retrieved set
 - State uncertainty or limitations in the first or second sentence — not buried at the end
 - If the evidence is mixed or contradictory: surface this explicitly in the first or second sentence. "The evidence is mixed — some studies found X while others found Y." Do not smooth over disagreement.
 - Distinguish strong human evidence (RCT, meta-analysis) from weaker evidence (observational, animal, mechanistic)
 - For dose questions: report the doses studied, not a recommendation
 - For claim checks: distinguish what the claim says from what these studies show
+- Include at least one concrete detail when the evidence supports it: population, study type, duration, or the specific outcome that changed
 - Never use: "notably", "importantly", "furthermore", "it is worth noting"
+- Never open with "This study" or "These studies" when you can open with the actual idea instead
 - Avoid dry phrases like "the literature suggests" unless they are genuinely the clearest wording
 - Do not sound like an academic assistant summarising a database
+- Do not patronise the reader or flatten everything into safety language
+- Make the uncertainty feel like honest judgment, not legal copy
 
 CAUSAL LANGUAGE CONSTRAINT — hard rule:
 Only use causal language ("causes", "leads to", "produces", "proves") when the evidence includes RCTs or meta-analyses. For observational-only evidence, use "associated with", "linked to", "suggests", "may", "appears to".
@@ -190,7 +201,7 @@ export async function synthesisePapers(
   logger.error({ err: lastError, query: plan.userQuestion }, "Search synthesis failed after retry and backup");
   return {
     synthesisText:
-      "The evidence here is still worth browsing directly. We found relevant papers, but the quick editorial readout did not complete cleanly, so it's better to treat the paper list as the source of truth for now.",
+      "The paper list is still worth browsing directly. We found relevant research, but the quick Clarity readout did not land cleanly this time, so it's better to lean on the papers themselves than pretend we have a polished answer.",
     confidence: snapshot.overallConfidence,
     noEvidence: papers.length === 0,
     paperSummaries: papers.map((paper) => ({

@@ -15,8 +15,8 @@ export function DashboardLayout({ children, immersive = false }: DashboardLayout
   const [location] = useLocation();
 
   const navItems = [
-    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/search", label: "Research Search", icon: Microscope },
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/billing", label: "Billing & Plans", icon: CreditCard },
     { href: "/settings", label: "Account Settings", icon: Settings },
   ];
@@ -26,7 +26,7 @@ export function DashboardLayout({ children, immersive = false }: DashboardLayout
       {!immersive && (
       <aside className="studio-sidebar h-full overflow-hidden">
         <div className="flex h-[72px] items-center border-b border-pebble-gray/80 px-6 bg-canvas-parchment/70 shrink-0">
-          <Link href="/dashboard" className="flex items-center gap-3 group">
+          <Link href="/search" className="flex items-center gap-3 group">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-inkwell shadow-subtle transition-transform group-hover:scale-[1.03] shrink-0">
               <div className="w-4 h-4 bg-canvas-parchment rounded-[2px] rotate-45" />
             </div>

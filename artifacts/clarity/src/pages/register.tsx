@@ -28,7 +28,7 @@ export default function Register() {
       {
         onSuccess: (data: RegisterMutationResult) => {
           queryClient.setQueryData(getGetMeQueryKey(), data.user);
-          setLocation("/dashboard");
+          setLocation("/search");
         },
         onError: (err: RegisterMutationError) => {
           const data = err?.data as { error?: string } | null;

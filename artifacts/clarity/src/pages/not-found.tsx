@@ -12,13 +12,13 @@ export default function NotFound() {
           This page doesn't exist. But the research does.
         </h1>
         <p className="text-[16px] leading-[1.65] text-muted-stone">
-          Whatever you were looking for isn't here. Head back to your dashboard and pick up where you left off.
+          Whatever you were looking for isn't here. Head back to search and pick up the thread from there.
         </p>
         <div className="pt-2 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           <Button asChild className="bg-onyx-outline border-onyx-outline hover:bg-onyx-outline/92">
-            <Link href="/dashboard">
+            <Link href="/search">
               <ArrowLeft className="h-4 w-4" />
-              Back to dashboard
+              Back to search
             </Link>
           </Button>
           <Button asChild variant="outline">

@@ -32,9 +32,14 @@ export type SupportType = "strongly_supported" | "partially_supported" | "relate
 export interface ResearchPlan {
   intentType: IntentType;
   userQuestion: string;
+  detectedLanguage: string;
+  responseLanguage: string;
+  normalizedEnglishQuestion: string;
   entities: string[];
   hiddenGoals: string[];
   queryVariants: string[];
+  directQueryVariants: string[];
+  contextQueryVariants: string[];
   followUpQuestions: string[];
 }
 
