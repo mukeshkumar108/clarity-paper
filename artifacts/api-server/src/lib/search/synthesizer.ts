@@ -5,8 +5,9 @@ import type { RankedPaper, ResearchPlan, EvidenceSnapshot } from "./types";
 // Search synthesis is a short 3-4 sentence summary — Gemini Flash is fast and
 // good enough. DeepSeek would be overkill here and causes 60-90s+ timeouts.
 // Use OPENROUTER_SEARCH_MODEL to override in production.
+// Synthesis is 3-4 sentences of structured JSON — Flash Lite is fast and accurate.
 const SEARCH_MODEL =
-  process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash";
+  process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash-lite";
 
 const synthesisOutputSchema = z.object({
   synthesisText: z.string(),

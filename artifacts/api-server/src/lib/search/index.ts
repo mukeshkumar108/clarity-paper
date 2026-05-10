@@ -3,6 +3,7 @@ import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { planResearch } from "./researchPlanner";
 import { retrievePapers } from "./retrieval";
 import { deduplicatePapers, filterGuidelineDocuments } from "./dedupe";
+import { rerankByRelevance } from "./reranker";
 import { rankPapers, buildEvidenceSnapshot } from "./ranking";
 import { synthesisePapers } from "./synthesizer";
 import { checkRetractionStatus } from "./openAlexClient";
@@ -119,14 +120,19 @@ async function refreshRetractionStatus(papers: RankedPaper[]): Promise<RankedPap
 
   if (candidates.length === 0) return papers;
 
+  // Batch fetch cache timestamps for all candidates in one query
+  const candidateKeys = candidates.map((p) => `doi:${p.doi!.toLowerCase()}`);
+  const cachedRows = await db
+    .select({ cacheKey: paperCacheTable.cacheKey, cachedAt: paperCacheTable.cachedAt })
+    .from(paperCacheTable)
+    .where(inArray(paperCacheTable.cacheKey, candidateKeys));
+  const cacheTimestampMap = new Map(cachedRows.map((r) => [r.cacheKey, r.cachedAt]));
+
   const staleDois: string[] = [];
   for (const p of candidates) {
     const key = `doi:${p.doi!.toLowerCase()}`;
-    const [cached] = await db
-      .select({ cachedAt: paperCacheTable.cachedAt })
-      .from(paperCacheTable)
-      .where(eq(paperCacheTable.cacheKey, key));
-    if (!cached || cached.cachedAt < staleThreshold) {
+    const cachedAt = cacheTimestampMap.get(key);
+    if (!cachedAt || cachedAt < staleThreshold) {
       staleDois.push(p.doi!);
     }
   }
@@ -228,9 +234,14 @@ export async function runSearch(
   const dedupeMs = Date.now() - t2;
   logger.info({ beforeFilter: deduplicatedRaw.length, afterFilter: deduplicated.length }, "Papers after dedup + guideline filter");
 
-  // 5. Rank + bucket
+  // 4a. Cohere Rerank — semantic relevance scoring + soft filter for off-topic papers.
+  // Runs after dedup so we don't waste rerank quota on duplicates. Fault-tolerant:
+  // if reranker fails, papers get relevanceScore=0.5 and ranking proceeds unchanged.
+  const rerankedDeduplicated = await rerankByRelevance(query, deduplicated);
+
+  // 5. Rank + bucket (evidence quality hierarchy; relevance used as within-bucket tie-breaker)
   const t3 = Date.now();
-  const rankedPapers = rankPapers(deduplicated, plan.entities);
+  const rankedPapers = rankPapers(rerankedDeduplicated, plan.entities);
   const rankMs = Date.now() - t3;
 
   // 5a. Retraction freshness check for top-ranked papers

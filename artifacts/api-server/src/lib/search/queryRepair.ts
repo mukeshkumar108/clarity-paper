@@ -13,8 +13,9 @@ import type {
   RepairStrategy,
 } from "./types";
 
-const STRUCTURED_MODEL =
-  process.env.OPENROUTER_STRUCTURED_MODEL ?? "google/gemini-2.5-flash";
+// Repair only needs to generate revised query strings — Flash Lite is sufficient.
+const REPAIR_MODEL =
+  process.env.OPENROUTER_REPAIR_MODEL ?? "google/gemini-2.5-flash-lite";
 
 // Dynamic threshold: near-zero baselines need only a small absolute gain to justify keeping the repair.
 // For scores >= 0.10, require a meaningful +0.05 improvement.
@@ -140,7 +141,7 @@ export async function repairRetrieval(
       systemPrompt,
       buildRepairMessage(plan, recommendation, judgment.issues),
       repairQueriesSchema,
-      { model: STRUCTURED_MODEL, temperature: 0.1 },
+      { model: REPAIR_MODEL, temperature: 0.1 },
     );
     const data = typeof raw === "string" ? JSON.parse(raw) : raw;
     const parsed = repairQueriesSchema.parse(data);

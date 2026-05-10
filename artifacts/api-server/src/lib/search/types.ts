@@ -61,6 +61,7 @@ export interface RankedPaper extends RetrievedPaper {
   evidenceScore: number;
   evidenceBucket: EvidenceBucket;
   plainSummary: string;
+  relevanceScore?: number; // 0–1 from Cohere Rerank; absent when reranker is skipped
 }
 
 export interface EvidenceSnapshot {

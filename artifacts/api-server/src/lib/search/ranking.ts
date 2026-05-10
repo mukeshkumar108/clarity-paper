@@ -129,7 +129,13 @@ const BUCKET_ORDER: EvidenceBucket[] = [
   "background",
 ];
 
-export function rankPapers(papers: RetrievedPaper[], entities: string[]): RankedPaper[] {
+// relevanceScores: optional map of externalId → Cohere relevance score (0–1).
+// When present, used as a within-bucket tie-breaker alongside evidence score.
+// Evidence bucket hierarchy is never overridden by relevance.
+export function rankPapers(
+  papers: Array<RetrievedPaper & { relevanceScore?: number }>,
+  entities: string[],
+): RankedPaper[] {
   const ranked: RankedPaper[] = papers.map((paper) => {
     const studyDesign = classifyStudyDesign(paper.abstract, paper.title, paper.studyType);
     const populationType = classifyPopulationType(paper.abstract, paper.title);
@@ -159,15 +165,19 @@ export function rankPapers(papers: RetrievedPaper[], entities: string[]): Ranked
       evidenceScore,
       evidenceBucket,
       plainSummary,
+      relevanceScore: paper.relevanceScore,
     };
   });
 
-  // Sort: first by bucket order, then by evidence score descending within bucket
+  // Sort: bucket order first, then within bucket blend evidence (70%) + relevance (30%).
+  // Relevance defaults to 0.5 when Cohere rerank was skipped — neutral, no distortion.
   ranked.sort((a, b) => {
     const bucketDiff =
       BUCKET_ORDER.indexOf(a.evidenceBucket) - BUCKET_ORDER.indexOf(b.evidenceBucket);
     if (bucketDiff !== 0) return bucketDiff;
-    return b.evidenceScore - a.evidenceScore;
+    const aScore = a.evidenceScore * 0.7 + (a.relevanceScore ?? 0.5) * 0.3;
+    const bScore = b.evidenceScore * 0.7 + (b.relevanceScore ?? 0.5) * 0.3;
+    return bScore - aScore;
   });
 
   return ranked.slice(0, 10);

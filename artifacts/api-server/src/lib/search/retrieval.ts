@@ -38,16 +38,7 @@ async function runBatch(queries: string[]): Promise<RetrievedPaper[]> {
 export async function retrievePapers(
   queryVariants: string[],
 ): Promise<RetrievedPaper[]> {
-  const batches: string[][] = [];
-  for (let i = 0; i < queryVariants.length; i += MAX_CONCURRENT_QUERIES) {
-    batches.push(queryVariants.slice(i, i + MAX_CONCURRENT_QUERIES));
-  }
-
-  const allPapers: RetrievedPaper[] = [];
-  for (const batch of batches) {
-    const papers = await runBatch(batch);
-    allPapers.push(...papers);
-  }
-
-  return allPapers;
+  // All variants run in a single Promise.allSettled — no sequential batching.
+  // Each variant fans out to 3 sources inside runBatch, so N variants = 3N parallel requests.
+  return runBatch(queryVariants);
 }

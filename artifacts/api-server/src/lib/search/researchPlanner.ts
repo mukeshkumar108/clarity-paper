@@ -2,8 +2,9 @@ import { z } from "zod";
 import { callLLM } from "../openRouterProvider";
 import type { ResearchPlan } from "./types";
 
-const STRUCTURED_MODEL =
-  process.env.OPENROUTER_STRUCTURED_MODEL ?? "google/gemini-2.5-flash";
+// Planner outputs pure JSON — Flash Lite is fast and accurate enough for this task.
+const PLANNER_MODEL =
+  process.env.OPENROUTER_PLANNER_MODEL ?? "google/gemini-2.5-flash-lite";
 
 const researchPlanSchema = z.object({
   intentType: z.enum([
@@ -73,7 +74,7 @@ export async function planResearch(query: string): Promise<ResearchPlan> {
     PLANNER_SYSTEM_PROMPT,
     `User query: ${query}`,
     researchPlanSchema,
-    { model: STRUCTURED_MODEL, temperature: 0.1 },
+    { model: PLANNER_MODEL, temperature: 0.1 },
   );
 
   const data = typeof raw === "string" ? JSON.parse(raw) : raw;

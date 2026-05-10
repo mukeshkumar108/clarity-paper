@@ -28,13 +28,17 @@ This document tracks fundamental decisions that define the product's identity an
 
 17. **No embedding-based similarity on the hot path.** Embedding APIs add latency and cost. The evidence span engine achieves useful precision through bigrams + entity weighting + negation detection. Embeddings are not blocked for future use but must not be added to the synchronous search path without explicit latency budget approval.
 
+18. **Cohere Rerank 4 Fast as a relevance filter, not a ranking override.** After deduplication, papers are passed through Cohere Rerank to add a semantic relevance score (0–1) per paper. This score is used as a within-bucket tie-breaker in `rankPapers` (70% evidence score, 30% relevance), and papers below a very low relevance threshold (0.04) are discarded as off-topic. Evidence bucket hierarchy is never overridden by relevance — a highly relevant observational paper cannot outrank a less-relevant meta-analysis. The reranker is fault-tolerant: if it fails, papers get a neutral 0.5 score and ranking proceeds unchanged. Cost: ~$0.002/search. Set `OPENROUTER_RERANK_MODEL=disabled` to bypass.
+
+19. **Gemini Flash Lite for pure-JSON search tasks.** The research planner, query repair, and synthesis steps all output structured JSON — they don't write prose. Flash Lite (`google/gemini-2.5-flash-lite`) is fast and accurate for these tasks. Flash (`google/gemini-2.5-flash`) is reserved for Pass 1 document analysis (complex full-paper extraction) and Pass 2 editorial (user-facing prose quality). Each role has its own env var override for independent tuning.
+
 18. **Unpaywall runs in parallel, not sequentially.** Open-access PDF enrichment has near-zero latency cost because it runs concurrently with the synthesis LLM call (which is always slower).
 
 ## Architectural Decisions
 
 1.  **Two-Pass Analysis Pipeline**: Factual extraction (Pass 1) and narrative synthesis (Pass 2) must remain decoupled. This ensures that the narrative is grounded in extracted facts rather than hallucinations.
-2.  **Structured Model Choice**: Pass 1 must use a model optimized for high-fidelity extraction and schema adherence. It is configurable via `OPENROUTER_STRUCTURED_MODEL` and currently defaults to `google/gemini-2.5-flash`.
-3.  **Editorial Model Choice**: Pass 2 must use a model optimized for creative, human-like narrative and reasoning (currently `deepseek/deepseek-v4-pro`). Overridable via `OPENROUTER_EDITORIAL_MODEL` env var.
+2.  **Structured Model Choice**: Pass 1 must use a model optimized for high-fidelity extraction and schema adherence. It is configurable via `OPENROUTER_STRUCTURED_MODEL` and currently defaults to `google/gemini-2.5-flash`. The full Flash model (not Lite) is used here because full-paper structured extraction is the most demanding JSON task in the system.
+3.  **Editorial Model Choice**: Pass 2 uses `google/gemini-2.5-flash` (overridable via `OPENROUTER_EDITORIAL_MODEL`). Previously `deepseek/deepseek-v4-pro` — switched after DeepSeek's slow streaming caused systematic timeouts on the Vercel→Railway proxy path (Vercel proxy timeout ~30s; DeepSeek body streaming takes 3-5 min). Flash is acceptable quality for the editorial voice at a fraction of the latency.
 4a. **PDF Routing**: PDFs are converted to markdown at upload time using `pymupdf4llm` (Python subprocess, venv at `artifacts/api-server/python-env/`). The markdown output goes through `sanitiseText()` and into Pass 1 as plain text. PDFs and pasted text follow the same downstream analysis path.
 4.  **Single-Pass Structured Extraction**: The full sanitised document is sent to Pass 1 in one request. There is no chunking or chunk-merge stage in the current implementation, so model choice must account for large-context documents.
 5.  **Relational Persistence**: All extraction data and narrative outputs are stored in a relational database (PostgreSQL via Drizzle) to allow for historical analysis and UI regeneration.

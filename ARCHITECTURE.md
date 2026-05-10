@@ -15,18 +15,31 @@ The search pipeline is the primary evidence surface. Every step prioritises grou
 
 ```
 User query
-  → ResearchPlanner        (LLM: intent, entities, query variants)
-  → retrievePapers         (Semantic Scholar + OpenAlex + EuropePMC in parallel)
+  → ResearchPlanner        (LLM: intent, entities, query variants — Gemini Flash Lite)
+  → retrievePapers         (Semantic Scholar + OpenAlex + EuropePMC — all variants in parallel)
   → deduplicatePapers      (DOI + title fuzzy dedup, guideline filtering)
+  → rerankByRelevance      (Cohere Rerank 4 Fast: semantic relevance score per paper, soft off-topic filter)
   → enrichWithUnpaywall    (open-access PDF links, runs in parallel with synthesis)
-  → rankPapers             (evidence scoring → evidenceBucket assignment)
+  → rankPapers             (evidence scoring → evidenceBucket; relevance used as within-bucket tie-breaker)
   → judgeRetrievalQuality  (LLM: topical relevance, off-topic detection)
-  → [repairRetrieval]      (optional: re-retrieve with tightened queries if judge flags weak quality)
-  → synthesisePapers       (LLM: evidence-constrained synthesis text)
+  → [repairRetrieval]      (optional: re-retrieve with tightened queries — Gemini Flash Lite)
+  → synthesisePapers       (LLM: evidence-constrained synthesis text — Gemini Flash Lite)
   → buildEvidenceSpans     (CPU: claim → snippet matching, no LLM)
   → validateGrounding      (causal overreach, numeric claim, model-prior checks)
   → SearchResult
 ```
+
+### Model Assignments
+
+| Role | Default model | Env var override | Rationale |
+|------|--------------|-----------------|-----------|
+| Research planner | `google/gemini-2.5-flash-lite` | `OPENROUTER_PLANNER_MODEL` | Pure JSON output; speed matters, prose quality doesn't |
+| Query repair | `google/gemini-2.5-flash-lite` | `OPENROUTER_REPAIR_MODEL` | Same — generates revised query strings |
+| Synthesis | `google/gemini-2.5-flash-lite` | `OPENROUTER_SEARCH_MODEL` | 3-4 sentences + JSON; Flash Lite sufficient |
+| Reranker | `cohere/rerank-4-fast` | `OPENROUTER_RERANK_MODEL` | Semantic relevance scoring; set to `"disabled"` to skip |
+| Doc analysis Pass 1 | `google/gemini-2.5-flash` | `OPENROUTER_STRUCTURED_MODEL` | Complex JSON extraction from full papers; needs full Flash |
+| Doc analysis Pass 2 | `google/gemini-2.5-flash` | `OPENROUTER_EDITORIAL_MODEL` | User-facing prose; plain english summary |
+| Doc analysis fast mode | `google/gemini-2.5-flash` | `OPENROUTER_FAST_MODEL` | Short abstracts from search results; Flash is fine |
 
 ### Retrieval Sources
 
@@ -108,16 +121,16 @@ The core logic resides in a multi-stage LLM pipeline designed to separate factua
 1.  **Ingestion & Extraction**: Uploaded PDFs or pasted text are processed. PDFs are converted to markdown with `pymupdf4llm`, then sanitised so citations, references, figure captions, and whitespace noise are removed before analysis.
 2.  **Pass 1: Structured Extraction (Internal)**:
     - **Goal**: Extract raw scientific data (methodology, findings, caveats, evidence signals).
-    - **Model**: `OPENROUTER_STRUCTURED_MODEL` env var, defaulting to `google/gemini-2.5-flash`.
+    - **Model**: `google/gemini-2.5-flash` (override: `OPENROUTER_STRUCTURED_MODEL`).
     - **Output**: Strict JSON matching the `structuredAnalysisSchema`.
     - **Execution**: The full sanitised document is sent in a single Pass 1 request. There is no chunk merge step in the current pipeline.
 3.  **Pass 2: Editorial Synthesis (User-Facing)**:
     - **Goal**: Transform the structured JSON into a compelling, human-readable narrative.
-    - **Model**: `deepseek/deepseek-v4-pro` (optimized for voice and nuance).
+    - **Model**: `google/gemini-2.5-flash` (override: `OPENROUTER_EDITORIAL_MODEL`). Previously DeepSeek v4 Pro; switched to Flash after timeout issues.
     - **Output**: Narrative JSON containing hooks, findings, and trust-calibration sections.
 4.  **Pass 3: Editorial Review (Optional)**:
     - **Goal**: Refine prose, ensure coherence, and remove "LLM-isms" or schema leakage.
-    - **Model**: `deepseek/deepseek-v4-pro`.
+    - **Model**: inherits `OPENROUTER_REVIEW_MODEL` (defaults to editorial model). Disabled by default; enable via `CLARITY_ENABLE_REVIEW_PASS=true`.
 
 ## Data Flow
 
