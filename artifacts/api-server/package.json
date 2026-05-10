@@ -11,7 +11,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "seed:demos": "node --import tsx ./src/scripts/seed-demos.ts",
-    "seed:demos:local": "node --env-file=../../.env --import tsx ./src/scripts/seed-demos.ts"
+    "seed:demos:local": "node --env-file=../../.env --import tsx ./src/scripts/seed-demos.ts",
+    "eval:search": "node --env-file=../../.env --import tsx ./src/scripts/run-search-evals.ts",
+    "eval:search:query": "node --env-file=../../.env --import tsx ./src/scripts/run-search-evals.ts --queries"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",

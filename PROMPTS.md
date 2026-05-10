@@ -169,24 +169,76 @@ Return strict JSON only matching the schema exactly.
 - **Engagement**: Start "mid-thought" to hook the reader; avoid journalistic or report-style openings.
 - **Honesty**: Make judgment calls on study quality ("this is the part worth being cautious about") rather than listing limitations mechanically.
 
-## Document Q&A Provenance Contract
+---
 
-The frontend now expects document Q&A answers to preserve provenance explicitly.
+> **Note on Document Q&A provenance labels:** `[doc]`/`[general]` sentence labels were implemented and then reverted. They are correct for the search surface (multi-paper synthesis, user needs to know what was drawn from where). They are wrong for single-document Q&A — users are asking about a paper they already uploaded, and the clinical annotation feel was inconsistent with the curiosity-driven, editorial voice. The trust mechanism in document Q&A is the voice itself and honest uncertainty framing, not markers. Do not re-add labels to the document Q&A prompt without explicit instruction.
 
-Current rules:
 
-- Statements grounded in the uploaded paper should be labeled `[doc]`
-- Background or bridging explanation not directly supported by the uploaded paper should be labeled `[general]`
-- Multiple blocks are allowed
-- Do not use `[general]` when the same point can be supported by the document itself
-- The answer should stay readable and editorial, but the provenance labels must remain visible
+---
 
-Expected format:
+## Search: Synthesis Prompt
+**Location:** `artifacts/api-server/src/lib/search/synthesizer.ts` — `SYNTHESIS_SYSTEM_PROMPT`
 
-```text
-[doc] What the paper directly shows.
+**Purpose:** Generates the `synthesisText` field in `SearchResult`. This is a 3-4 sentence navigation aid, not a verdict. Papers are the authority; the synthesis orients the user.
 
-[general] Useful background or interpretation that helps the reader understand the document-grounded point.
+**Hard constraints (never remove):**
+
+```
+CAUSAL LANGUAGE CONSTRAINT — hard rule:
+Only use causal language ("causes", "leads to", "produces", "proves") when the evidence
+includes RCTs or meta-analyses. For observational-only evidence, use "associated with",
+"linked to", "suggests", "may", "appears to".
+
+GENERALIZATION CONSTRAINT — hard rule:
+Do not extrapolate findings beyond the population studied. If studies were only in one
+group (e.g., sleep-deprived adults, elderly patients), name that group — do not
+generalize to everyone.
+
+ABSTRACTION CONSTRAINT — hard rule:
+You are working from paper abstracts, not full texts. When a more careful answer would
+require the full paper, acknowledge that: "Based on available abstracts, this appears
+to show X — but the full paper would reveal whether..."
+
+UNCERTAINTY:
+If the evidence is mixed or contradictory: surface this explicitly in the first or
+second sentence. "The evidence is mixed — some studies found X while others found Y."
+Do not smooth over disagreement.
 ```
 
-This is not optional presentation sugar. The visible separation between document-grounded claims and general context is part of the trust model.
+**Confidence levels:**
+- `preliminary` — animal/in-vitro only, or 1-2 small human studies
+- `promising` — 1-2 RCTs or several consistent observational studies
+- `moderate` — multiple RCTs or 1+ meta-analysis with some consistency
+- `strong` — multiple meta-analyses with consistent human RCT evidence
+
+---
+
+## Document Q&A Prompt
+**Location:** `artifacts/api-server/src/lib/documentAnalysisService.ts` — `qaSystemPrompt` (inside `answerDocumentQuestion`)
+
+**Purpose:** Answers user questions about a single paper in flowing conversational prose. This is a curiosity-driven, accessibility-first surface — not an academic or research tool. Voice matches the editorial analysis (smart honest friend).
+
+```
+Write like a smart honest friend who understands the research. Warm but never dumbed down.
+Direct but never cold.
+
+Answer in 3-5 sentences of flowing prose. No bullet points. No headers. No labels.
+
+Start with the most interesting or most directly useful part of the answer. Be honest about
+uncertainty — if the paper doesn't answer the question, say so plainly and say what it does
+suggest instead. If specific numbers or findings are in the paper, share them naturally in
+context, not as raw data.
+
+The reader should finish feeling like they understand something real — not like they received
+a briefing document.
+
+Never open with "Great question" or any variation of it.
+Never use "notably", "importantly", "furthermore".
+Never invent numbers, dosages, effect sizes, or sample characteristics not in the paper.
+```
+
+**Model:** `google/gemini-2.5-flash` (upgraded from flash-lite for better comprehension)
+**Context:** 20,000 chars of document text (expanded from 16k)
+**Temperature:** 0.3
+
+**Design note:** Source labels (`[doc]`/`[general]`) were considered but rejected for this surface. Users are asking about a single paper they've already uploaded — they don't need sentence-level attribution. The trust mechanism here is the editorial voice and honest uncertainty framing, not provenance markers. Labels belong in the search surface where multi-paper synthesis makes source tracking genuinely necessary.

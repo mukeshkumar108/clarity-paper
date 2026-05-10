@@ -4,3 +4,5 @@ export * from "./documentAnalysis";
 export * from "./documentQuestions";
 export * from "./subscriptions";
 export * from "./usageEvents";
+export * from "./searchSessions";
+export * from "./paperCache";

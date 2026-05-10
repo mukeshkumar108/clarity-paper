@@ -1,0 +1,50 @@
+import React, { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
+
+const STAGES = [
+  { label: "Planning search", detail: "Identifying key concepts and query variants", durationMs: 2500 },
+  { label: "Finding papers", detail: "Querying Semantic Scholar and OpenAlex", durationMs: 4000 },
+  { label: "Removing duplicates", detail: "Merging results across sources", durationMs: 1500 },
+  { label: "Ranking evidence", detail: "Scoring by study design and recency", durationMs: 1500 },
+  { label: "Writing synthesis", detail: "Summarising what the evidence shows", durationMs: 99999 },
+];
+
+export function SearchLoadingState() {
+  const [stageIdx, setStageIdx] = useState(0);
+
+  useEffect(() => {
+    if (stageIdx >= STAGES.length - 1) return;
+    const timer = setTimeout(() => setStageIdx((i) => i + 1), STAGES[stageIdx].durationMs);
+    return () => clearTimeout(timer);
+  }, [stageIdx]);
+
+  const current = STAGES[stageIdx];
+
+  return (
+    <div className="flex flex-col items-center gap-6 py-16 text-center">
+      <div className="w-14 h-14 rounded-full border-2 border-pebble-gray flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-onyx-outline animate-spin" />
+      </div>
+
+      <div className="space-y-1.5">
+        <p className="text-[16px] font-medium text-deep-shadow">{current.label}</p>
+        <p className="text-[13px] text-muted-stone max-w-[38ch]">{current.detail}</p>
+      </div>
+
+      <div className="flex gap-1.5 mt-1">
+        {STAGES.map((s, i) => (
+          <div
+            key={s.label}
+            className={`h-1 rounded-full transition-all duration-500 ${
+              i < stageIdx
+                ? "w-6 bg-forest-green-action"
+                : i === stageIdx
+                  ? "w-6 bg-onyx-outline animate-pulse"
+                  : "w-2 bg-pebble-gray"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}

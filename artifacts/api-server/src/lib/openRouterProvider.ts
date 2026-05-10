@@ -16,6 +16,8 @@ export async function callLLM(
     temperature?: number;
     /** Base64-encoded PDF to pass as a native multimodal attachment alongside the text message. */
     pdfBase64?: string;
+    /** Abort the request after this many milliseconds. Defaults to 45 000. */
+    timeoutMs?: number;
   }
 ): Promise<string> {
   if (isDemoMode) {
@@ -58,16 +60,31 @@ export async function callLLM(
     };
   }
 
-  const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-      "HTTP-Referer": process.env.REPLIT_DOMAINS?.split(",")[0] ?? "http://localhost",
-      "X-Title": "Clarity Document Analysis",
-    },
-    body: JSON.stringify(body),
-  });
+  const timeoutMs = options?.timeoutMs ?? 45_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": process.env.REPLIT_DOMAINS?.split(",")[0] ?? "http://localhost",
+        "X-Title": "Clarity Document Analysis",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    if ((err as { name?: string }).name === "AbortError") {
+      throw new Error(`LLM_TIMEOUT after ${timeoutMs}ms`);
+    }
+    throw err;
+  }
+  clearTimeout(timer);
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "");

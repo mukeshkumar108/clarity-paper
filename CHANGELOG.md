@@ -11,21 +11,43 @@ All notable product and engineering changes should be tracked here.
 - improved long-form typography, measure, line-height, table/code/blockquote styling, and reading rhythm
 - unified markdown, PDF-extracted text, and plaintext into one calmer document-reading shell
 
-### Trust Layer / Grounding
+### Document Trust Layer / Grounding
 - added visible grounding banner to the analysis workspace
 - added evidence cards for findings with source snippet, support type, confidence summary, and evidence type
 - clicking a finding or evidence card now anchors the supporting passage in the source pane
 - source pane now highlights the active supporting snippet and scrolls it into view
 - introduced restrained trust language for `direct`, `indirect`, `contextual`, and `general` support
 
-### Q&A UX
-- document Q&A now renders provenance labels visibly in the UI: `[doc]` and `[general]`
-- added expandable supporting-evidence cards under grounded Q&A answers
-- Q&A evidence navigation now reuses the same source-anchoring flow as findings
+### Document Q&A
+- model upgraded from `gemini-2.5-flash-lite` → `gemini-2.5-flash` for better comprehension
+- context window expanded from 16k → 20k chars
+- prompt re-aligned to "smart honest friend" editorial voice — flowing prose, 3-5 sentences, honest about uncertainty
+- sentence-level `[doc]`/`[general]` labels were tried and reverted: they felt clinical and academic for a curiosity-driven Q&A surface; the editorial voice itself is the trust mechanism here, not annotation
+
+### Search Pipeline (new)
+- multi-source retrieval: Semantic Scholar + OpenAlex + EuropePMC in parallel
+- research planner: intent classification, entity extraction, query variants
+- evidence bucket ranking: meta-analysis → RCT → observational → mechanistic → background
+- retrieval judge + repair loop: auto-retrigger with tightened queries when quality is weak
+- synthesis with hard constraints: causal language gated on evidence type, no overgeneralization, abstract-only framing, contradiction surfacing
+- evidence span engine: bigram scoring, entity weighting (2×), negation detection, number matching
+- support taxonomy: `strongly_supported / partially_supported / related_evidence`
+- grounding safety: all snippets verbatim from source abstracts — fabrication impossible by construction
+- grounding validator: causal overreach, unsupported numeric claims, model-prior leakage detection
+- Unpaywall enrichment: open-access PDF links, parallel with synthesis
+- coverage note: always `abstracts_only` until full-text retrieval implemented
+- search sessions + paper cache DB tables (requires `npm run push` in `lib/db` before first deploy)
+- eval harness with two baseline runs saved
+
+### Search UI (new)
+- evidence-first ordering: EvidenceSnapshot → Synthesis → EvidencePanel → Paper cards
+- EvidencePanel: expandable claim rows with verbatim snippets and DOI links
+- SynthesisAnswer: "What the evidence suggests" framing, abstract-only notice
+- PaperCard, SearchInput, SearchLoadingState, FollowUpOptions, RecentSearches components
 
 ### Production / Platform
-- documented the live split deployment more clearly: Vercel frontend, Railway API, Railway Postgres
-- documented the same-origin `/api` proxy requirement as part of the stable auth/session model
+- documented live split deployment: Vercel frontend, Railway API, Railway Postgres
+- documented same-origin `/api` proxy requirement for stable auth/session
 
 ## 2026-05-08
 

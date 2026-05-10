@@ -14,6 +14,7 @@ import Settings from "@/pages/settings";
 import DocumentNew from "@/pages/document-new";
 import DocumentView from "@/pages/document-view";
 import DocumentQA from "@/pages/document-qa";
+import Search from "@/pages/search";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,9 @@ function Router() {
       </Route>
       <Route path="/documents/:id/qa">
         {(params) => <ProtectedRoute><DocumentQA id={params.id} /></ProtectedRoute>}
+      </Route>
+      <Route path="/search">
+        <ProtectedRoute><Search /></ProtectedRoute>
       </Route>
       <Route path="/billing">
         <ProtectedRoute><Billing /></ProtectedRoute>

@@ -582,22 +582,23 @@ Write like a smart honest friend who understands the research. Warm but never du
 
 Answer in 3-5 sentences of flowing prose. No bullet points. No headers. No labels.
 
-Start with the most interesting part of the answer. Be honest about uncertainty. If the paper doesn't answer the question say so plainly and say what it does suggest.
+Start with the most interesting or most directly useful part of the answer. Be honest about uncertainty — if the paper doesn't answer the question, say so plainly and say what it does suggest instead. If specific numbers or findings are in the paper, share them naturally in context, not as raw data.
 
 The reader should finish feeling like they understand something real — not like they received a briefing document.
 
 Never open with "Great question" or any variation of it.
 Never use "notably", "importantly", "furthermore".
+Never invent numbers, dosages, effect sizes, or sample characteristics not in the paper.
 Write in ${language}.`;
 
-  const textToQuery = normalizeDocumentTextForQa(documentText).slice(0, 16000);
+  const textToQuery = normalizeDocumentTextForQa(documentText).slice(0, 20000);
 
   const userMessage = `Document text:
 ---
 ${textToQuery}
 ---
 
-Structured analysis context:
+Prior analysis context:
 ---
 ${analysisContext}
 ---
@@ -605,8 +606,9 @@ ${analysisContext}
 Question: ${question}`;
 
   const raw = await callLLM(qaSystemPrompt, userMessage, undefined, {
-    model: "google/gemini-2.5-flash-lite",
-    temperature: 0.4,
+    model: "google/gemini-2.5-flash",
+    temperature: 0.3,
+    timeoutMs: 30_000,
   });
   return raw.trim();
 }

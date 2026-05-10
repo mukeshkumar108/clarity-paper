@@ -445,47 +445,77 @@ router.post("/documents/:id/questions", requireAuth, async (req, res): Promise<v
     .from(documentAnalysisTable)
     .where(eq(documentAnalysisTable.documentId, id));
 
-  const answer = await answerDocumentQuestion(
-    doc.extractedText,
-    question,
-    analysis
-      ? (() => {
-          const normalized = normalizeStoredAnalysis(
-            {
-              briefSummary: analysis.briefSummary,
-              plainEnglishSummary: analysis.plainEnglishSummary,
-              documentType: analysis.documentType,
-              keyPoints: analysis.keyPoints,
-              keyFindings: analysis.keyFindings,
-              methodology: analysis.methodology,
-              limitations: analysis.limitations,
-              gotchas: analysis.gotchas,
-              conflictingInterests: analysis.conflictingInterests,
-              practicalApplications: analysis.practicalApplications,
-              unusualTerms: analysis.unusualTerms,
-              missingInfo: analysis.missingInfo,
-              questionsToAsk: analysis.questionsToAsk,
-              confidenceLevel: analysis.confidenceLevel,
-              confidenceNotes: analysis.confidenceNotes,
-            },
-            analysis.documentType,
-          );
+  const qaStart = Date.now();
+  let answer: string;
+  try {
+    answer = await answerDocumentQuestion(
+      doc.extractedText,
+      question,
+      analysis
+        ? (() => {
+            const normalized = normalizeStoredAnalysis(
+              {
+                briefSummary: analysis.briefSummary,
+                plainEnglishSummary: analysis.plainEnglishSummary,
+                documentType: analysis.documentType,
+                keyPoints: analysis.keyPoints,
+                keyFindings: analysis.keyFindings,
+                methodology: analysis.methodology,
+                limitations: analysis.limitations,
+                gotchas: analysis.gotchas,
+                conflictingInterests: analysis.conflictingInterests,
+                practicalApplications: analysis.practicalApplications,
+                unusualTerms: analysis.unusualTerms,
+                missingInfo: analysis.missingInfo,
+                questionsToAsk: analysis.questionsToAsk,
+                confidenceLevel: analysis.confidenceLevel,
+                confidenceNotes: analysis.confidenceNotes,
+              },
+              analysis.documentType,
+            );
 
-          return {
-            documentType: analysis.documentType,
-            briefSummary: normalized.bottomLine,
-            plainEnglishSummary: normalized.realWorldMeaning.summary,
-            gotchas: normalized.commonMisreadings.map((item) => ({
-              title: item.misleadingClaim,
-              explanation: item.whatThePaperSupports,
-            })),
-            missingInfo: normalized.missingInfo,
-            questionsToAsk: normalized.questionsToAskBeforeTrustingIt,
-          };
-        })()
-      : null,
-    user.preferredLanguage ?? "English",
+            return {
+              documentType: analysis.documentType,
+              briefSummary: normalized.bottomLine,
+              plainEnglishSummary: normalized.realWorldMeaning.summary,
+              gotchas: normalized.commonMisreadings.map((item) => ({
+                title: item.misleadingClaim,
+                explanation: item.whatThePaperSupports,
+              })),
+              missingInfo: normalized.missingInfo,
+              questionsToAsk: normalized.questionsToAskBeforeTrustingIt,
+            };
+          })()
+        : null,
+      user.preferredLanguage ?? "English",
     );
+  } catch (err) {
+    const latencyMs = Date.now() - qaStart;
+    const isTimeout = err instanceof Error && err.message.startsWith("LLM_TIMEOUT");
+    logger.warn(
+      { documentId: id, userId: user.id, latencyMs, err: (err as Error).message, isTimeout },
+      "Q&A LLM call failed",
+    );
+    const fallbackAnswer = isTimeout
+      ? "The answer took too long to generate. Please try again — shorter questions tend to work best."
+      : "Something went wrong generating an answer. Please try again in a moment.";
+
+    const [savedFailed] = await db
+      .insert(documentQuestionsTable)
+      .values({
+        documentId: id,
+        userId: user.id,
+        question: question.trim(),
+        answer: fallbackAnswer,
+      })
+      .returning();
+
+    res.status(201).json(savedFailed);
+    return;
+  }
+
+  const qaLatencyMs = Date.now() - qaStart;
+  logger.info({ documentId: id, userId: user.id, latencyMs: qaLatencyMs }, "Q&A answered");
 
   const [savedQuestion] = await db
     .insert(documentQuestionsTable)

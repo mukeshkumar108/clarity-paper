@@ -5,6 +5,7 @@ import documentsRouter from "./documents";
 import dashboardRouter from "./dashboard";
 import billingRouter from "./billing";
 import settingsRouter from "./settings";
+import searchRouter from "./search";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(documentsRouter);
 router.use(dashboardRouter);
 router.use(billingRouter);
 router.use(settingsRouter);
+router.use(searchRouter);
 
 export default router;

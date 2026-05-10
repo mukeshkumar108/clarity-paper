@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { FileText, CreditCard, Settings, LogOut, Plus, LayoutDashboard } from "lucide-react";
+import { FileText, CreditCard, Settings, LogOut, Plus, LayoutDashboard, Microscope } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +16,7 @@ export function DashboardLayout({ children, immersive = false }: DashboardLayout
 
   const navItems = [
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/search", label: "Research Search", icon: Microscope },
     { href: "/billing", label: "Billing & Plans", icon: CreditCard },
     { href: "/settings", label: "Account Settings", icon: Settings },
   ];

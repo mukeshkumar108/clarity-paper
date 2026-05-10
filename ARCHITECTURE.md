@@ -1,17 +1,107 @@
 # Clarity Paper Architecture
 
-Clarity Paper is a trust-focused research analysis platform that transforms complex scientific papers into plain-English reviews.
+Clarity Paper is a trust-focused scientific exploration platform. It has two distinct product surfaces:
 
-## Product Surfaces
+1. **Document Analysis** — upload a single paper, get a structured editorial review with trust calibration, visible grounding, and Q&A
+2. **Search** — ask a research question, get multi-paper evidence synthesis with full claim provenance
 
-Clarity now has two top-level surfaces:
+---
 
-1. **Search-first exploration** for query-led evidence discovery
-2. **Document-first review** for uploaded or pasted papers
+## Search Pipeline
 
-This document focuses on the shared architectural principles plus the shipped document-analysis workspace.
+The search pipeline is the primary evidence surface. Every step prioritises grounding: **the papers are the authority, not the AI.**
 
-## Analysis Pipeline (The Two-Pass System)
+### Pipeline Stages
+
+```
+User query
+  → ResearchPlanner        (LLM: intent, entities, query variants)
+  → retrievePapers         (Semantic Scholar + OpenAlex + EuropePMC in parallel)
+  → deduplicatePapers      (DOI + title fuzzy dedup, guideline filtering)
+  → enrichWithUnpaywall    (open-access PDF links, runs in parallel with synthesis)
+  → rankPapers             (evidence scoring → evidenceBucket assignment)
+  → judgeRetrievalQuality  (LLM: topical relevance, off-topic detection)
+  → [repairRetrieval]      (optional: re-retrieve with tightened queries if judge flags weak quality)
+  → synthesisePapers       (LLM: evidence-constrained synthesis text)
+  → buildEvidenceSpans     (CPU: claim → snippet matching, no LLM)
+  → validateGrounding      (causal overreach, numeric claim, model-prior checks)
+  → SearchResult
+```
+
+### Retrieval Sources
+
+| Source | Client | Notes |
+|--------|--------|-------|
+| Semantic Scholar | `semanticScholarClient.ts` | Primary; citation counts, study type |
+| OpenAlex | `openAlexClient.ts` | Retraction status, citation percentile |
+| EuropePMC | `europePMCClient.ts` | Biomedical depth, especially older literature |
+
+All three run in parallel. Results are deduped by DOI then title fuzzy match.
+
+### Evidence Bucket Ranking
+
+Papers are scored and placed into one of five buckets (displayed in this order):
+
+| Bucket | Criteria |
+|--------|----------|
+| `strongest` | Meta-analyses and systematic reviews |
+| `human_observational` | Human RCTs, cohort, cross-sectional |
+| `conflicting` | Papers with findings that contradict the synthesis direction |
+| `mechanistic` | Animal studies, in vitro |
+| `background` | Editorials, reviews without primary data |
+
+### Evidence Span Engine (`evidenceSpans.ts`)
+
+Matches synthesis claims to verbatim abstract sentences — no LLM, no embeddings.
+
+**Scoring factors:**
+- Unigram overlap with entity weighting (plan entities get 2.0× weight)
+- Bigram matching (1.5× weight per bigram)
+- Negation detection: scan 60 chars before matched keyword; if negation word found, multiply score by 0.5
+- Number proximity bonus: 0.05 per shared number token, max 0.15
+
+**Support taxonomy (`SupportType`):**
+- `strongly_supported` — score ≥ 0.42
+- `partially_supported` — score ≥ 0.22
+- `related_evidence` — score < 0.22
+
+**Grounding safety invariant:** every snippet returned is a verbatim substring of its source abstract. No LLM can fabricate a snippet — the text is extracted directly from the retrieved paper.
+
+### Coverage Note
+
+`SearchResult.coverageNote` is always `"abstracts_only"` until full-text retrieval is implemented. Shown in the UI as "Based on paper abstracts · full texts not reviewed."
+
+### Synthesis Constraints
+
+The synthesis prompt has four hard rules (see `PROMPTS.md`):
+- **Causal language** only permitted for RCT/meta-analysis evidence
+- **No generalisation** beyond the population studied
+- **Abstraction awareness** — must acknowledge working from abstracts
+- **Uncertainty** — must surface contradictions between papers
+
+### Retrieval Judge & Repair Loop
+
+After initial retrieval, `retrievalJudge.ts` scores quality on 5 dimensions (topical alignment, intervention match, population match, evidence type, off-topic/guideline penalty). If score is weak, `queryRepair.ts` re-retrieves with tightened queries and keeps whichever result set scores higher.
+
+### Unpaywall Enrichment
+
+`unpaywallClient.ts` resolves open-access PDF links by DOI. Runs in parallel with the synthesis LLM call — net latency cost is approximately zero.
+
+### Frontend Components (Search)
+
+| Component | Role |
+|-----------|------|
+| `EvidenceSnapshot` | Leads the results page — counts by bucket, overall confidence |
+| `SynthesisAnswer` | "What the evidence suggests" — synthesis text, confidence badge, coverage note |
+| `EvidencePanel` | Claim-level provenance — expandable rows with verbatim abstract snippets |
+| `PaperCard` | Individual paper with evidence bucket, study design, plain summary |
+| `FollowUpOptions` | Suggested follow-up queries from the research plan |
+
+**Order in `SearchResults.tsx`:** EvidenceSnapshot → SynthesisAnswer → EvidencePanel → Paper cards → FollowUpOptions. Evidence leads; AI synthesis follows.
+
+---
+
+## Document Analysis Pipeline (The Two-Pass System)
 
 The core logic resides in a multi-stage LLM pipeline designed to separate factual extraction from narrative synthesis.
 

@@ -10,6 +10,26 @@ This document tracks fundamental decisions that define the product's identity an
 4.  **No Fabrication**: The product must never invent findings. If a paper is vague or missing data, the analysis must state that clearly as a limitation.
 5.  **Not a Medical Advisor**: The product provides research explanation and analysis, never medical advice.
 
+## Search & Evidence Decisions
+
+10. **Papers are the authority, not the AI.** Synthesis text is a navigation aid — it helps users orient themselves in the evidence. It is not a verdict. Evidence panel (claims + snippets) leads the UI; synthesis follows. The UX model is Wikipedia-style provenance, not ChatGPT-style answer.
+
+11. **Evidence span grounding by construction, not by LLM.** Every snippet shown in the EvidencePanel is a verbatim substring of its source abstract. The matching is CPU-only (bigram + entity weighting + negation detection). No LLM is asked to validate whether a snippet supports a claim — this eliminates one class of hallucination entirely.
+
+12. **Support taxonomy: strongly_supported / partially_supported / related_evidence.** Thresholds are 0.42 / 0.22 / below. These replaced the prior `direct / indirect / contextual` labels, which implied precision the scoring function didn't have.
+
+13. **Causal language is gated on evidence type.** The synthesis prompt enforces this as a hard rule: "causes", "leads to", "produces", "proves" are only permitted when the evidence includes RCTs or meta-analyses. Observational-only evidence must use "associated with", "suggests", "may", "appears to". This prevents the AI from overstating mechanistic claims.
+
+14. **Abstract-only coverage is always disclosed.** `coverageNote: "abstracts_only"` is always returned until full-text retrieval is implemented. The UI shows this explicitly. This is a honesty constraint — users must know we haven't read the full papers.
+
+15. **Three retrieval sources in parallel.** Semantic Scholar, OpenAlex, and EuropePMC are all queried for every search. Dedup by DOI, then fuzzy title match. No single source is trusted exclusively — each has different coverage strengths.
+
+16. **Retrieval judge before synthesis.** An LLM judges retrieval quality after every search and triggers a repair loop if the score is weak. This prevents low-quality retrievals from polluting the synthesis. The repair loop re-retrieves with tightened queries; the better result set wins.
+
+17. **No embedding-based similarity on the hot path.** Embedding APIs add latency and cost. The evidence span engine achieves useful precision through bigrams + entity weighting + negation detection. Embeddings are not blocked for future use but must not be added to the synchronous search path without explicit latency budget approval.
+
+18. **Unpaywall runs in parallel, not sequentially.** Open-access PDF enrichment has near-zero latency cost because it runs concurrently with the synthesis LLM call (which is always slower).
+
 ## Architectural Decisions
 
 1.  **Two-Pass Analysis Pipeline**: Factual extraction (Pass 1) and narrative synthesis (Pass 2) must remain decoupled. This ensures that the narrative is grounded in extracted facts rather than hallucinations.

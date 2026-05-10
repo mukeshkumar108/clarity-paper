@@ -20,23 +20,19 @@ superseded. Do not use them for implementation guidance.
 
 ## What This Product Is
 
-Clarity Paper is a scientific literacy tool. It helps people 
-understand and evaluate research papers — not just what a study 
-says, but whether they should trust it and why.
+Clarity is a scientific literacy platform with two surfaces:
 
-It now has two user-facing surfaces:
-- a search-first research exploration flow
-- a document-first review flow for uploaded papers
+**Document Analysis** — upload a single paper, get a structured editorial review with trust calibration, plain-English findings, visible grounding cards, and Q&A.
 
-Both surfaces are aiming at the same product promise: visible, 
-inspectable evidence rather than floating AI explanation.
+**Search** — ask a research question, get multi-paper evidence synthesis with full claim provenance. Every synthesis claim can be traced to a verbatim abstract passage from a real paper.
 
-It is not a summariser. It is not a medical advisor. It is a 
-trust-focused reviewer with a human editorial voice.
+Both surfaces share the same product promise: visible, inspectable evidence rather than floating AI explanation. It is not a summariser. It is not a medical advisor. It is a trust-focused reviewer with a human editorial voice.
 
-The difference matters. A summariser tells you what a paper says. 
-Clarity tells you what the evidence means, how strong it is, and 
-what questions it leaves unanswered.
+**Search** — ask a research question, get multi-paper evidence synthesis with full claim provenance. Every synthesis claim can be traced to a verbatim abstract passage from a real paper.
+
+The search surface is the newer, larger system. Read `ARCHITECTURE.md` for the full search pipeline before touching anything in `src/lib/search/`.
+
+**Core principle: the papers are the authority, not the AI.** The AI orients the user. It does not deliver verdicts. Every claim in the synthesis has a source. Evidence leads the UI; synthesis follows.
 
 ---
 
@@ -190,7 +186,7 @@ Specific things that signal bad output:
 
 ## Current State (as of 2026-05-10)
 
-**Working:**
+**Document Analysis — Working:**
 - Two-pass pipeline end to end
 - DeepSeek Pass 2 producing human editorial voice
 - Progressive disclosure layout in frontend
@@ -201,29 +197,39 @@ Specific things that signal bad output:
 - Deployed production stack on Vercel + Railway + Railway Postgres
 - Demo papers seeded into production
 - Session auth working through Vercel `/api` proxy to Railway backend
-- Search-first product surface and retrieval docs have been added
-- Readable source rendering for markdown, PDF-extracted text, and plaintext
+- Readable source rendering for markdown, PDF-extracted text, and plaintext (`ReadableDocumentView`)
 - Deterministic text cleanup before rendering (`normalizeReadableText`)
 - Visible grounding UI: evidence cards, support labels, source anchoring
 - Click-claim-to-source highlighting in the document workspace
-- Q&A UI now distinguishes `[doc]` and `[general]` answer segments
+- Document Q&A: upgraded model (gemini-2.5-flash), larger context (20k), voice-aligned prompt (flowing prose, "smart honest friend" register)
 
-**Next priorities:**
-- Usage limits removed for v1 testing
-- Semantic Scholar integration for related papers
-- Full backend provenance for Q&A answers and multi-passage support
-- Better mobile grounding ergonomics for the document workspace
+**Search — Working:**
+- Multi-source retrieval: Semantic Scholar + OpenAlex + EuropePMC in parallel
+- Research planner: intent classification, entity extraction, query variant generation
+- Evidence bucket ranking (meta-analysis → RCT → observational → mechanistic → background)
+- Retrieval judge + repair loop (auto-retrigger when quality is weak)
+- Evidence span engine: bigrams, entity weighting, negation detection, number matching
+- Support taxonomy: `strongly_supported / partially_supported / related_evidence`
+- Grounding safety: all snippets are verbatim abstract substrings (no LLM fabrication possible)
+- Grounding validator: causal overreach, numeric claim, model-prior leakage detection
+- Synthesis constraints: causal language gating, generalization, abstraction, uncertainty
+- Coverage note: `abstracts_only` always returned and shown in UI
+- Unpaywall enrichment (open-access PDF links, parallel with synthesis)
+- EvidencePanel UI: expandable claim rows with verbatim snippets + DOI links
+- Evidence-first UX ordering in SearchResults
 
-**Not started yet:**
-- Claim verification across multiple papers
-- Confidence landscape across the literature
-- User accounts and saved papers
-- Social sharing
+**Not yet implemented:**
+- Full-text retrieval (always `abstracts_only` for now)
+- Explicit contradiction surfacing in UI (P6 — handled in synthesis prompt only)
+- Eval harness grounding metrics (P9)
+- Streaming output for document analysis
+- Mobile-responsive search results layout
 
 ---
 
 ## Things Agents Must Not Change Without Explicit Instruction
 
+**Document Analysis:**
 - The two-pass architecture separation
 - DeepSeek as the Pass 2 model
 - The five-section output structure
@@ -235,6 +241,14 @@ Specific things that signal bad output:
   the UI should expose a path back to it
 - Deterministic source rendering: document cleanup/rendering must not
   use an LLM to rewrite uploaded text before display
+
+**Search / Evidence:**
+- The grounding safety invariant: snippets must be verbatim substrings of their source abstract
+- The support taxonomy thresholds (0.42 / 0.22) — do not adjust without re-running evals
+- The synthesis causal language constraints in the synthesizer prompt
+- The evidence-first UX ordering (EvidenceSnapshot → Synthesis → EvidencePanel → Papers)
+- The `coverageNote` field on `SearchResult` — always set it; never omit or hardcode as covered
+- The retrieval judge + repair loop — do not remove even if it adds latency; quality is the tradeoff
 
 If you are asked to make a change that conflicts with any of 
 the above, flag it explicitly before proceeding. Do not 
