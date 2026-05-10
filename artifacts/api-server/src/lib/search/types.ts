@@ -8,8 +8,13 @@ export type IntentType =
 export interface ResearchPlan {
   intentType: IntentType;
   userQuestion: string;
+  detectedLanguage: string;
+  responseLanguage: string;
+  normalizedEnglishQuestion: string;
   entities: string[];
   hiddenGoals: string[];
+  directQueryVariants: string[];
+  contextQueryVariants: string[];
   queryVariants: string[];
   inclusionCriteria: string[];
   exclusionCriteria: string[];

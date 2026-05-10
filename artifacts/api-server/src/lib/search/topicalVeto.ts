@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { callLLM } from "../openRouterProvider";
 import { logger } from "../logger";
+import { DISEASE_TITLE_TERMS } from "./retrievalJudge";
 import type { RankedPaper, ResearchPlan } from "./types";
 
 const TOPICAL_VETO_MODEL =
   process.env.OPENROUTER_TOPIC_FILTER_MODEL ?? "meta-llama/llama-3.1-8b-instruct";
 
 const MAX_PAPERS_TO_REVIEW = 15;
-const MIN_PAPERS_TO_KEEP = 5;
+const MIN_PAPERS_TO_KEEP = 3;
 const TITLE_INTERVENTION_CUES = [
   "supplementation",
   "supplement",
@@ -65,7 +66,15 @@ const topicalVetoSchema = z.object({
 function shouldRunTopicalVeto(plan: ResearchPlan, papers: RankedPaper[]): boolean {
   if (papers.length <= MIN_PAPERS_TO_KEEP) return false;
 
-  const query = plan.userQuestion.toLowerCase();
+  if (
+    plan.intentType === "claim_check" ||
+    plan.intentType === "topic_exploration" ||
+    plan.intentType === "dose_question"
+  ) {
+    return true;
+  }
+
+  const query = (plan.normalizedEnglishQuestion || plan.userQuestion).toLowerCase();
   if (plan.entities.length >= 2) return true;
 
   return (
@@ -93,6 +102,8 @@ function buildPrompt(plan: ResearchPlan, papers: RankedPaper[]): string {
 
   return [
     `USER QUESTION: ${plan.userQuestion}`,
+    `NORMALIZED ENGLISH QUESTION: ${plan.normalizedEnglishQuestion}`,
+    `RESPONSE LANGUAGE: ${plan.responseLanguage}`,
     `INTENT: ${plan.intentType}`,
     `KEY ENTITIES: ${plan.entities.join(", ") || "None extracted"}`,
     `HIDDEN GOALS: ${plan.hiddenGoals.join(", ") || "None"}`,
@@ -136,7 +147,9 @@ function hasForeignInterventionMismatch(plan: ResearchPlan, paper: RankedPaper):
   if (cueIndex === undefined) return false;
 
   const lead = paper.title.slice(0, cueIndex);
-  const queryTokens = new Set(tokenize(`${plan.userQuestion} ${plan.entities.join(" ")}`));
+  const queryTokens = new Set(
+    tokenize(`${plan.normalizedEnglishQuestion || plan.userQuestion} ${plan.entities.join(" ")}`),
+  );
   const leadTokens = tokenize(lead).filter(
     (token) =>
       token.length > 3 &&
@@ -145,6 +158,30 @@ function hasForeignInterventionMismatch(plan: ResearchPlan, paper: RankedPaper):
   );
 
   return leadTokens.length > 0;
+}
+
+function secondaryEntityTokens(plan: ResearchPlan): string[] {
+  return plan.entities
+    .slice(1)
+    .flatMap((entity) => tokenize(entity))
+    .filter((token) => token.length > 3 && !FOREIGN_TOKEN_STOPWORDS.has(token));
+}
+
+function hasOffTopicConditionMismatch(plan: ResearchPlan, paper: RankedPaper): boolean {
+  const questionLower = (plan.normalizedEnglishQuestion || plan.userQuestion).toLowerCase();
+  const textLower = `${paper.title} ${paper.abstract.slice(0, 250)}`.toLowerCase();
+  const titleLower = paper.title.toLowerCase();
+
+  const hasUnaskedCondition = DISEASE_TITLE_TERMS.some(
+    (term) => titleLower.includes(term) && !questionLower.includes(term),
+  ) || (titleLower.includes("covid") && !questionLower.includes("covid"));
+
+  if (!hasUnaskedCondition) return false;
+
+  const secondaryTokens = secondaryEntityTokens(plan);
+  if (secondaryTokens.length === 0) return false;
+
+  return !secondaryTokens.some((token) => textLower.includes(token));
 }
 
 export async function applyTopicalVeto(
@@ -157,16 +194,23 @@ export async function applyTopicalVeto(
 
   const reviewed = papers.slice(0, MAX_PAPERS_TO_REVIEW);
   const untouchedTail = papers.slice(MAX_PAPERS_TO_REVIEW);
+  const deterministicFilteredReviewed = reviewed.filter(
+    (paper) =>
+      !hasForeignInterventionMismatch(plan, paper) &&
+      !hasOffTopicConditionMismatch(plan, paper),
+  );
+  const deterministicRemoved = reviewed.length - deterministicFilteredReviewed.length;
+  const deterministicCombined = [...deterministicFilteredReviewed, ...untouchedTail];
 
   try {
     const raw = await callLLM(
       "You are a conservative relevance filter for a scientific search engine. Remove only papers that are clearly irrelevant to the user's actual question. Borderline papers should not be removed. Return strict JSON only.",
-      buildPrompt(plan, reviewed),
+      buildPrompt(plan, deterministicFilteredReviewed),
       topicalVetoSchema,
       {
         model: TOPICAL_VETO_MODEL,
         temperature: 0,
-        timeoutMs: 20_000,
+        timeoutMs: 30_000,
       },
     );
 
@@ -174,16 +218,17 @@ export async function applyTopicalVeto(
     const parsed = topicalVetoSchema.parse(data);
     const verdicts = new Map(parsed.judgments.map((judgment) => [judgment.externalId, judgment]));
 
-    const filteredReviewed = reviewed.filter((paper) => {
+    const filteredReviewed = deterministicFilteredReviewed.filter((paper) => {
       const llmVerdict = verdicts.get(paper.externalId)?.verdict;
       if (llmVerdict === "remove") return false;
-      if (hasForeignInterventionMismatch(plan, paper)) return false;
       return true;
     });
-    const removed = reviewed.length - filteredReviewed.length;
+    const removed = papers.length - ([...filteredReviewed, ...untouchedTail].length);
 
     if (removed === 0) {
-      return papers;
+      return deterministicRemoved > 0 && deterministicCombined.length >= MIN_PAPERS_TO_KEEP
+        ? deterministicCombined
+        : papers;
     }
 
     const combined = [...filteredReviewed, ...untouchedTail];
@@ -196,14 +241,21 @@ export async function applyTopicalVeto(
     }
 
     const removedPapers = reviewed
-      .filter((paper) => verdicts.get(paper.externalId)?.verdict === "remove" || hasForeignInterventionMismatch(plan, paper))
+      .filter(
+        (paper) =>
+          verdicts.get(paper.externalId)?.verdict === "remove" ||
+          hasForeignInterventionMismatch(plan, paper) ||
+          hasOffTopicConditionMismatch(plan, paper),
+      )
       .map((paper) => ({
         externalId: paper.externalId,
         title: paper.title,
         reason:
           verdicts.get(paper.externalId)?.verdict === "remove"
             ? verdicts.get(paper.externalId)?.reason ?? "No reason returned"
-            : "Foreign intervention mismatch in title",
+            : hasForeignInterventionMismatch(plan, paper)
+              ? "Foreign intervention mismatch in title"
+              : "Off-topic condition mismatch for the user's actual question",
       }));
 
     logger.info(
@@ -214,6 +266,13 @@ export async function applyTopicalVeto(
     return combined;
   } catch (err) {
     logger.warn({ err, model: TOPICAL_VETO_MODEL }, "Topical veto failed — keeping original papers");
+    if (deterministicRemoved > 0 && deterministicCombined.length >= MIN_PAPERS_TO_KEEP) {
+      logger.info(
+        { removed: deterministicRemoved, papersIn: papers.length },
+        "Deterministic topical guards applied despite LLM veto failure",
+      );
+      return deterministicCombined;
+    }
     return papers;
   }
 }

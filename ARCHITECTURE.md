@@ -15,8 +15,8 @@ The search pipeline is the primary evidence surface. Every step prioritises grou
 
 ```
 User query
-  → ResearchPlanner        (LLM: intent, entities, query variants — Gemini Flash Lite)
-  → retrievePapers         (Semantic Scholar + OpenAlex + EuropePMC + CORE — all variants in parallel)
+  → ResearchPlanner        (LLM: intent, entities, language normalization, direct/context query lanes — Gemini Flash Lite)
+  → retrievePlannedPapers  (direct evidence queries first; broader context only if direct lane is sparse)
   → deduplicatePapers      (DOI + title fuzzy dedup, guideline filtering)
   → rerankByRelevance      (Cohere Rerank 4 Fast: semantic relevance score per paper, soft off-topic filter)
   → applyTopicalVeto       (LLM: cheap conservative veto for obviously irrelevant intervention/condition mismatches)
@@ -55,6 +55,26 @@ User query
 | CORE | `coreClient.ts` | Open-access paper coverage, download URLs, useful fallback when Semantic Scholar is unavailable |
 
 All four run in parallel. Results are deduped by DOI then title fuzzy match. If Semantic Scholar is rate-limited or unavailable, the pipeline degrades to OpenAlex + EuropePMC + CORE rather than failing the search.
+
+### Language Handling
+
+The planner now explicitly detects the user's language and produces:
+- the original `userQuestion`
+- a `normalizedEnglishQuestion` for literature retrieval
+- `directQueryVariants` in English for high-precision evidence search
+- `contextQueryVariants` in English for broader mechanism/background search
+
+User-facing search synthesis and follow-up questions are written in the detected response language, while retrieval stays English-first to match the indexed literature.
+
+### Direct vs Context Retrieval
+
+Search no longer treats every planner query equally. It now uses a staged retrieval pattern:
+
+1. Run the direct evidence lane first (`directQueryVariants`)
+2. Deduplicate and count the direct candidates
+3. Only expand into broader mechanism/background queries (`contextQueryVariants`) if the direct lane is sparse
+
+This keeps intervention-condition searches tighter by default while still allowing the system to widen the net when direct evidence is genuinely thin.
 
 ### Evidence Bucket Ranking
 

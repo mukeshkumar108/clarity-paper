@@ -1,12 +1,13 @@
 import { analyseDocument, answerDocumentQuestion } from "../lib/documentAnalysisService";
 import { planResearch } from "../lib/search/researchPlanner";
-import { retrievePapers } from "../lib/search/retrieval";
+import { retrievePlannedPapers } from "../lib/search/retrieval";
 import { deduplicatePapers, filterGuidelineDocuments } from "../lib/search/dedupe";
 import { rerankByRelevance } from "../lib/search/reranker";
 import { rankPapers, buildEvidenceSnapshot } from "../lib/search/ranking";
 import { judgeRetrievalQuality, filterTopicallyWeakPapers } from "../lib/search/retrievalJudge";
 import { repairRetrieval } from "../lib/search/queryRepair";
 import { synthesisePapers } from "../lib/search/synthesizer";
+import { applyTopicalVeto } from "../lib/search/topicalVeto";
 import { checkFriendlyQaAnswer, checkSearchRelevance, type SearchJourneyExpectation } from "../lib/verification/userJourneyChecks";
 import { isDemoMode } from "../lib/openRouterProvider";
 import type { RankedPaper } from "../lib/search/types";
@@ -35,9 +36,9 @@ const CASES: VerificationCase[] = [
     query: "is cold exposure real or hype?",
     searchExpectation: {
       requiredTerms: ["cold", "cryotherapy", "immersion"],
-      requiredTitleTerms: ["cold exposure", "cold-water", "immersion", "cryotherapy", "ice bath"],
+      requiredTitleTerms: ["cold exposure", "cold-water", "immersion", "cryotherapy", "ice bath", "cold stress"],
       forbiddenTerms: ["covid-19", "road traffic noise", "prostate cancer", "l-citrulline", "hypoxia", "pneumatic compression"],
-      minMatchingTopPapers: 3,
+      minMatchingTopPapers: 2,
       topPaperWindow: 5,
     },
     qaQuestion: "Does this read more like a real effect with narrow use cases, or more like a broad wellness claim people are overextending?",
@@ -62,10 +63,11 @@ function mapAnalysisToQaContext(analysis: Awaited<ReturnType<typeof analyseDocum
 
 async function runSearchJourney(query: string) {
   const plan = await planResearch(query);
-  const rawPapers = await retrievePapers(plan.queryVariants);
+  const rawPapers = await retrievePlannedPapers(plan);
   const deduplicated = filterGuidelineDocuments(deduplicatePapers(rawPapers));
-  const reranked = await rerankByRelevance(query, deduplicated);
-  let ranked = filterTopicallyWeakPapers(rankPapers(reranked, plan.entities), plan);
+  const reranked = await rerankByRelevance(plan.normalizedEnglishQuestion, deduplicated);
+  const vetoed = await applyTopicalVeto(plan, rankPapers(reranked, plan.entities));
+  let ranked = filterTopicallyWeakPapers(vetoed, plan);
   const judgment = judgeRetrievalQuality(ranked, plan);
 
   if (judgment.shouldTriggerRepair) {

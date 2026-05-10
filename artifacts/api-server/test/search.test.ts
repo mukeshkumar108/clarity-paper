@@ -432,9 +432,21 @@ function makePlan(overrides: Partial<ResearchPlan> = {}): ResearchPlan {
   return {
     intentType: "topic_exploration",
     userQuestion: "Does creatine improve cognitive function?",
+    detectedLanguage: "English",
+    responseLanguage: "English",
+    normalizedEnglishQuestion: "Does creatine improve cognitive function?",
     entities: ["creatine", "cognitive function", "memory"],
     hiddenGoals: ["mental performance", "brain health"],
-    queryVariants: ["creatine cognitive function"],
+    directQueryVariants: [
+      "creatine cognitive function randomized trial",
+      "creatine cognitive function systematic review",
+    ],
+    contextQueryVariants: ["creatine brain energy metabolism"],
+    queryVariants: [
+      "creatine cognitive function randomized trial",
+      "creatine cognitive function systematic review",
+      "creatine brain energy metabolism",
+    ],
     inclusionCriteria: ["human studies"],
     exclusionCriteria: [],
     desiredEvidenceTypes: ["rct", "meta_analysis"],
@@ -696,6 +708,7 @@ describe("population mismatch — disease bleed", () => {
   it("does not penalize disease populations when query is about that disease", () => {
     const diseasePlan = makePlan({
       userQuestion: "What is the treatment for nonalcoholic fatty liver disease?",
+      normalizedEnglishQuestion: "What is the treatment for nonalcoholic fatty liver disease?",
       entities: ["nafld", "liver disease", "steatohepatitis"],
     });
     const papers: RankedPaper[] = [
@@ -711,6 +724,7 @@ describe("population mismatch — disease bleed", () => {
   it("flags disease-specific populations for general sleep/meditation queries", () => {
     const sleepPlan = makePlan({
       userQuestion: "Does melatonin improve sleep quality?",
+      normalizedEnglishQuestion: "Does melatonin improve sleep quality?",
       entities: ["melatonin", "sleep quality", "insomnia"],
     });
     const papers: RankedPaper[] = [

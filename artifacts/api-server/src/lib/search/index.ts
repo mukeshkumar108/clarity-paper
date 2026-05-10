@@ -1,7 +1,7 @@
 import { db, searchSessionsTable, paperCacheTable } from "@workspace/db";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { planResearch } from "./researchPlanner";
-import { retrievePapers } from "./retrieval";
+import { retrievePlannedPapers } from "./retrieval";
 import { deduplicatePapers, filterGuidelineDocuments } from "./dedupe";
 import { rerankByRelevance } from "./reranker";
 import { applyTopicalVeto } from "./topicalVeto";
@@ -311,11 +311,20 @@ export async function runSearch(
   const t0 = Date.now();
   const plan = await planResearch(query);
   const planMs = Date.now() - t0;
-  logger.info({ intentType: plan.intentType, variants: plan.queryVariants.length }, "Research plan generated");
+  logger.info(
+    {
+      intentType: plan.intentType,
+      responseLanguage: plan.responseLanguage,
+      directVariants: plan.directQueryVariants.length,
+      contextVariants: plan.contextQueryVariants.length,
+      variants: plan.queryVariants.length,
+    },
+    "Research plan generated",
+  );
 
   // 2. Retrieve
   const t1 = Date.now();
-  const rawPapers = await retrievePapers(plan.queryVariants);
+  const rawPapers = await retrievePlannedPapers(plan);
   const retrieveMs = Date.now() - t1;
   logger.info({ count: rawPapers.length }, "Papers retrieved");
 
@@ -334,7 +343,7 @@ export async function runSearch(
   // 4a. Cohere Rerank — semantic relevance scoring + soft filter for off-topic papers.
   // Runs after dedup so we don't waste rerank quota on duplicates. Fault-tolerant:
   // if reranker fails, papers get relevanceScore=0.5 and ranking proceeds unchanged.
-  const rerankedDeduplicated = await rerankByRelevance(query, deduplicated);
+  const rerankedDeduplicated = await rerankByRelevance(plan.normalizedEnglishQuestion, deduplicated);
   const vetoedDeduplicated = await applyTopicalVeto(
     plan,
     rankPapers(rerankedDeduplicated, plan.entities),

@@ -211,6 +211,11 @@ Do not smooth over disagreement.
 - `moderate` — multiple RCTs or 1+ meta-analysis with some consistency
 - `strong` — multiple meta-analyses with consistent human RCT evidence
 
+**Language handling:**
+- The planner detects the user's language separately from retrieval
+- Retrieval queries are normalized into English for literature search
+- `synthesisText`, `paperSummaries`, and `followUpOptions` should be written in the user's response language
+
 ---
 
 ## Document Q&A Prompt

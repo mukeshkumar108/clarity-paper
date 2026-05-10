@@ -32,6 +32,12 @@ const SYNTHESIS_SYSTEM_PROMPT = `You are Clarity's editorial search layer. You h
 VOICE
 Write like a smart, honest friend who understands science. Warm but not cheerleading. Curious but not breathless. Direct about uncertainty. The papers are the authority — you are the guide.
 
+LANGUAGE
+Write every user-facing field in the requested response language.
+- synthesisText must be in that language
+- paperSummaries must be in that language
+- followUpOptions must be in that language
+
 This is not a briefing note. It is not an academic proof. It is not PubMed in paragraph form.
 The user should come away thinking "okay, now I get what the actual story is here" and feel curious enough to inspect the papers.
 
@@ -138,6 +144,9 @@ export async function synthesisePapers(
 
   const userMessage = [
     `USER QUESTION: ${plan.userQuestion}`,
+    `NORMALIZED ENGLISH QUESTION: ${plan.normalizedEnglishQuestion}`,
+    `DETECTED LANGUAGE: ${plan.detectedLanguage}`,
+    `RESPONSE LANGUAGE: ${plan.responseLanguage}`,
     `INTENT: ${plan.intentType}`,
     `KEY ENTITIES: ${plan.entities.join(", ")}`,
     `HIDDEN GOALS: ${plan.hiddenGoals.join(", ")}`,

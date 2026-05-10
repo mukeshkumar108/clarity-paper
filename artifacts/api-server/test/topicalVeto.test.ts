@@ -11,8 +11,13 @@ function makePlan(overrides: Partial<ResearchPlan> = {}): ResearchPlan {
   return {
     intentType: "topic_exploration",
     userQuestion: "does creatine help with alzheimers",
+    detectedLanguage: "English",
+    responseLanguage: "English",
+    normalizedEnglishQuestion: "does creatine help with alzheimers",
     entities: ["creatine", "alzheimers"],
     hiddenGoals: [],
+    directQueryVariants: [],
+    contextQueryVariants: [],
     queryVariants: [],
     inclusionCriteria: [],
     exclusionCriteria: [],
@@ -158,6 +163,43 @@ describe("applyTopicalVeto", () => {
         makePaper({ externalId: "paper-4", title: "Cold stress impacts cognitive performance in healthy volunteers" }),
         makePaper({ externalId: "paper-5", title: "Cold exposure and thermogenesis" }),
         makePaper({ externalId: "paper-6", title: "Ice bath recovery after exercise" }),
+      ],
+    );
+
+    expect(result.map((paper) => paper.externalId)).not.toContain("paper-2");
+  });
+
+  it("removes off-topic condition mismatches when the queried secondary concept is missing", async () => {
+    callLLMMock.mockResolvedValueOnce(
+      JSON.stringify({
+        judgments: [
+          { externalId: "paper-1", verdict: "keep", reason: "Relevant." },
+          { externalId: "paper-2", verdict: "keep", reason: "Creatine paper." },
+          { externalId: "paper-3", verdict: "keep", reason: "Relevant." },
+          { externalId: "paper-4", verdict: "keep", reason: "Relevant." },
+          { externalId: "paper-5", verdict: "keep", reason: "Relevant." },
+          { externalId: "paper-6", verdict: "keep", reason: "Relevant." },
+        ],
+      }),
+    );
+
+    const { applyTopicalVeto } = await import("../src/lib/search/topicalVeto");
+    const result = await applyTopicalVeto(
+      makePlan({
+        userQuestion: "does creatine actually help with brain health and how?",
+        normalizedEnglishQuestion: "does creatine actually help with brain health and how?",
+        entities: ["creatine", "brain health", "cognitive function"],
+      }),
+      [
+        makePaper({ externalId: "paper-1", title: "Creatine and cognition in adults" }),
+        makePaper({
+          externalId: "paper-2",
+          title: "Creatine supplementation on fatigue related to post-COVID-19 condition-fatigue study",
+        }),
+        makePaper({ externalId: "paper-3", title: "Creatine and memory under demanding conditions" }),
+        makePaper({ externalId: "paper-4", title: "Creatine and attention in healthy adults" }),
+        makePaper({ externalId: "paper-5", title: "Creatine and working memory" }),
+        makePaper({ externalId: "paper-6", title: "Creatine and mental fatigue performance" }),
       ],
     );
 

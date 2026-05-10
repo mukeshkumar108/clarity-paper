@@ -39,7 +39,7 @@ export function isGuidelineTitle(title: string): boolean {
 
 // ─── Disease bleed detection ───────────────────────────────────────────────────
 
-const DISEASE_TITLE_TERMS = [
+export const DISEASE_TITLE_TERMS = [
   "nonalcoholic fatty liver", "nafld", "nash", "steatohepatitis",
   "hepatitis", "cirrhosis", "liver disease",
   "kidney disease", "chronic kidney", "renal failure", "dialysis",
@@ -50,6 +50,10 @@ const DISEASE_TITLE_TERMS = [
   "multiple sclerosis", "rheumatoid arthritis", "lupus", "psoriasis",
   "icu patients", "critically ill", "intensive care",
 ];
+
+function normalizedQuestionLower(plan: ResearchPlan): string {
+  return (plan.normalizedEnglishQuestion || plan.userQuestion).toLowerCase();
+}
 
 function hasDiseaseBleed(title: string, userQuestion: string): boolean {
   const titleLower = title.toLowerCase();
@@ -125,11 +129,11 @@ function judgeOnePaper(paper: RankedPaper, plan: ResearchPlan): PaperJudgment {
 
   const isOffTopic = topicalRelevance < 0.15;
   const isGuideline = isGuidelineTitle(paper.title);
-  const questionLower = plan.userQuestion.toLowerCase();
+  const questionLower = normalizedQuestionLower(plan);
   const diseaseInQuestion = DISEASE_TITLE_TERMS.some((t) => questionLower.includes(t));
   // Population mismatch: disease-specific title when query is about a general population/condition
   // Don't gate on titleRelevance — the intervention may still appear in the title despite wrong population
-  const hasPopulationMismatch = !diseaseInQuestion && hasDiseaseBleed(paper.title, plan.userQuestion);
+  const hasPopulationMismatch = !diseaseInQuestion && hasDiseaseBleed(paper.title, plan.normalizedEnglishQuestion || plan.userQuestion);
   const entityConflationRisk = detectEntityConflationRisk(paper, plan.entities);
 
   let note: string | undefined;
@@ -220,7 +224,7 @@ export function computeRetrievalQualityScore(
     : 0.5;
 
   // populationMatch: human papers in top 5 (only penalise for human-focused queries)
-  const questionLower = plan.userQuestion.toLowerCase();
+  const questionLower = normalizedQuestionLower(plan);
   const isHumanFocused =
     !DISEASE_TITLE_TERMS.some((t) => questionLower.includes(t)) &&
     plan.intentType !== "paper_explanation";
@@ -256,7 +260,7 @@ export function computeRetrievalQualityScore(
   const entityConflationPenalty = -Math.min(conflationInTop5.length * 0.08, 0.15);
 
   const diseaseBleedInTop5 = top5.filter(
-    (p) => !DISEASE_TITLE_TERMS.some((t) => questionLower.includes(t)) && hasDiseaseBleed(p.title, plan.userQuestion),
+    (p) => !DISEASE_TITLE_TERMS.some((t) => questionLower.includes(t)) && hasDiseaseBleed(p.title, plan.normalizedEnglishQuestion || plan.userQuestion),
   );
   const diseaseBleedPenalty = -Math.min(diseaseBleedInTop5.length * 0.07, 0.21);
 

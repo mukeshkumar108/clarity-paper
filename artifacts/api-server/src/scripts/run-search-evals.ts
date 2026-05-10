@@ -17,13 +17,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { planResearch } from "../lib/search/researchPlanner";
-import { retrievePapers } from "../lib/search/retrieval";
+import { retrievePlannedPapers } from "../lib/search/retrieval";
 import { deduplicatePapers, filterGuidelineDocuments } from "../lib/search/dedupe";
 import { rankPapers, buildEvidenceSnapshot } from "../lib/search/ranking";
 import { synthesisePapers } from "../lib/search/synthesizer";
 import { judgeRetrievalQuality } from "../lib/search/retrievalJudge";
 import { repairRetrieval } from "../lib/search/queryRepair";
 import { validateGrounding } from "../lib/search/groundingValidator";
+import { rerankByRelevance } from "../lib/search/reranker";
+import { applyTopicalVeto } from "../lib/search/topicalVeto";
 import { pool } from "@workspace/db";
 import { EVAL_QUERIES, type EvalQuery } from "./eval-queries";
 import type { ResearchPlan, RankedPaper, EvidenceSnapshot, RetrievalJudgment, GroundingResult } from "../lib/search/types";
@@ -69,14 +71,16 @@ async function runSingleEval(query: EvalQuery): Promise<EvalResult> {
     const plan = await planResearch(query.query);
 
     // 2. Retrieve
-    const rawPapers = await retrievePapers(plan.queryVariants);
+    const rawPapers = await retrievePlannedPapers(plan);
 
     // 3. Deduplicate + guideline filter
     const deduplicatedRaw = deduplicatePapers(rawPapers);
     const deduplicated = filterGuidelineDocuments(deduplicatedRaw);
 
-    // 4. Rank
-    const ranked = rankPapers(deduplicated, plan.entities);
+    // 4. Rerank + topical veto + rank
+    const reranked = await rerankByRelevance(plan.normalizedEnglishQuestion, deduplicated);
+    const vetoed = await applyTopicalVeto(plan, rankPapers(reranked, plan.entities));
+    const ranked = vetoed;
 
     // 5. Initial quality judgment
     const initialJudgment = judgeRetrievalQuality(ranked, plan);

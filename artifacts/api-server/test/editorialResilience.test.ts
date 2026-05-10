@@ -205,8 +205,13 @@ describe("editorial resilience", () => {
       {
         intentType: "topic_exploration",
         userQuestion: "does creatine help the brain",
+        detectedLanguage: "English",
+        responseLanguage: "English",
+        normalizedEnglishQuestion: "does creatine help the brain",
         entities: ["creatine"],
         hiddenGoals: [],
+        directQueryVariants: [],
+        contextQueryVariants: [],
         queryVariants: [],
         inclusionCriteria: [],
         exclusionCriteria: [],

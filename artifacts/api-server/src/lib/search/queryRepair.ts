@@ -55,7 +55,10 @@ function buildRepairMessage(
   const issueDescriptions = allIssues.map((i) => `- [${i.severity}] ${i.kind}: ${i.description}`).join("\n");
   const parts = [
     `USER QUESTION: ${plan.userQuestion}`,
+    `NORMALIZED ENGLISH QUESTION: ${plan.normalizedEnglishQuestion}`,
     `KEY ENTITIES: ${plan.entities.join(", ")}`,
+    `DIRECT QUERIES: ${plan.directQueryVariants.join("; ")}`,
+    `CONTEXT QUERIES: ${plan.contextQueryVariants.join("; ")}`,
     `ORIGINAL QUERIES: ${plan.queryVariants.join("; ")}`,
     "",
     `REPAIR STRATEGY: ${recommendation.strategy}`,
@@ -77,7 +80,7 @@ function buildRepairMessage(
 // ─── Fallback query builders per strategy ────────────────────────────────────
 
 function fallbackQueries(plan: ResearchPlan, strategy: RepairStrategy): string[] {
-  const primary = plan.entities[0] ?? plan.userQuestion.slice(0, 40);
+  const primary = plan.entities[0] ?? plan.normalizedEnglishQuestion.slice(0, 40);
   const secondary = plan.entities[1] ?? "";
 
   switch (strategy) {

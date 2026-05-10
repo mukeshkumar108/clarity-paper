@@ -211,9 +211,10 @@ Specific things that signal bad output:
 
 **Search — Working:**
 - Multi-source retrieval: Semantic Scholar + OpenAlex + EuropePMC + CORE in parallel
-- Research planner: intent classification, entity extraction, query variant generation
+- Research planner: intent classification, entity extraction, language detection, English retrieval normalization, direct/context query lanes
 - Evidence bucket ranking (meta-analysis → RCT → observational → mechanistic → background)
 - Retrieval judge + repair loop (auto-retrigger when quality is weak)
+- Staged retrieval: direct evidence lane first, broader context only when direct evidence is sparse
 - Evidence span engine: bigrams, entity weighting, negation detection, number matching
 - Support taxonomy: `strongly_supported / partially_supported / related_evidence`
 - Grounding safety: all snippets are verbatim abstract substrings (no LLM fabrication possible)
