@@ -106,6 +106,14 @@ export interface SearchResult {
   coverageNote: "abstracts_only" | "partial_full_text" | "full_text";
 }
 
+// ─── SSE streaming events ─────────────────────────────────────────────────────
+
+export type SearchStreamEvent =
+  | { type: "papers"; papers: RankedPaper[]; evidenceSnapshot: EvidenceSnapshot; noEvidence: boolean }
+  | { type: "synthesis"; synthesisText: string; confidence: string; evidenceSpans: EvidenceSpan[]; followUpOptions: string[]; coverageNote: "abstracts_only" }
+  | { type: "done"; sessionId: number }
+  | { type: "error"; message: string };
+
 export interface SearchSessionSummary {
   id: number;
   query: string;

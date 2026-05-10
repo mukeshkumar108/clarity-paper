@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { runSearch, getSearchSession, listSearchSessions } from "../lib/search/index";
+import type { SearchProgressEvent } from "../lib/search/types";
 import { sanitiseText } from "../lib/documentExtraction";
 import { analyseDocument } from "../lib/documentAnalysisService";
 import { packAnalysisForStorage } from "../lib/analysisContract";
@@ -35,6 +36,50 @@ router.post("/search", requireAuth, async (req, res): Promise<void> => {
     } else {
       res.status(500).json({ error: "Search failed. Please try again." });
     }
+  }
+});
+
+// POST /search/stream — run a new search with SSE progressive results
+// Emits: { type:"papers" } as soon as papers are ranked, then { type:"synthesis" }
+// when the LLM synthesis completes, then { type:"done", sessionId } on save.
+// Keeps the existing POST /search endpoint for backwards-compat (e.g. session loads).
+router.post("/search/stream", requireAuth, async (req, res): Promise<void> => {
+  const { query } = req.body as { query?: string };
+
+  if (!query || query.trim().length === 0) {
+    res.status(400).json({ error: "query is required" });
+    return;
+  }
+
+  if (query.trim().length > 1000) {
+    res.status(400).json({ error: "query must be under 1000 characters" });
+    return;
+  }
+
+  // SSE headers — X-Accel-Buffering disables nginx/Vercel proxy buffering
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const write = (event: SearchProgressEvent) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  try {
+    const result = await runSearch(req.session.userId!, query.trim(), write);
+    write({ type: "done", sessionId: result.sessionId });
+  } catch (err) {
+    logger.error({ err }, "Streaming search failed");
+    const message = err instanceof Error ? err.message : "Search failed";
+    if (message === "DEMO_MODE") {
+      write({ type: "error", message: "Search requires an API key" });
+    } else {
+      write({ type: "error", message: "Search failed. Please try again." });
+    }
+  } finally {
+    res.end();
   }
 });
 

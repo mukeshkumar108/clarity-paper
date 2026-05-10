@@ -1,6 +1,7 @@
 import React from "react";
 import type { SearchResult, EvidenceBucket, RankedPaper } from "@/lib/search-types";
 import { SynthesisAnswer } from "./SynthesisAnswer";
+import { SynthesisSkeleton } from "./SynthesisSkeleton";
 import { EvidenceSnapshot } from "./EvidenceSnapshot";
 import { EvidencePanel } from "./EvidencePanel";
 import { PaperCard } from "./PaperCard";
@@ -36,9 +37,11 @@ function groupByBucket(papers: RankedPaper[]): Map<EvidenceBucket, RankedPaper[]
 interface SearchResultsProps {
   result: SearchResult;
   onFollowUp: (query: string) => void;
+  /** When true, papers are shown but synthesis is still loading — show skeleton */
+  synthesisLoading?: boolean;
 }
 
-export function SearchResults({ result, onFollowUp }: SearchResultsProps) {
+export function SearchResults({ result, onFollowUp, synthesisLoading = false }: SearchResultsProps) {
   const grouped = groupByBucket(result.papers);
   let globalIndex = 0;
 
@@ -51,19 +54,23 @@ export function SearchResults({ result, onFollowUp }: SearchResultsProps) {
         </section>
       )}
 
-      {/* Synthesis — orientation text, positioned after the evidence summary */}
+      {/* Synthesis — skeleton while loading, real content once ready */}
       <section>
-        <SynthesisAnswer
-          synthesisText={result.synthesisText}
-          confidence={result.confidence}
-          noEvidence={result.noEvidence}
-          query={result.query}
-          coverageNote={result.coverageNote}
-        />
+        {synthesisLoading ? (
+          <SynthesisSkeleton />
+        ) : (
+          <SynthesisAnswer
+            synthesisText={result.synthesisText}
+            confidence={result.confidence}
+            noEvidence={result.noEvidence}
+            query={result.query}
+            coverageNote={result.coverageNote}
+          />
+        )}
       </section>
 
-      {/* Evidence panel — claim-by-claim provenance (P7) */}
-      {result.evidenceSpans && result.evidenceSpans.length > 0 && (
+      {/* Evidence panel — only shown once synthesis (and spans) are ready */}
+      {!synthesisLoading && result.evidenceSpans && result.evidenceSpans.length > 0 && (
         <section>
           <EvidencePanel spans={result.evidenceSpans} />
         </section>
@@ -104,8 +111,8 @@ export function SearchResults({ result, onFollowUp }: SearchResultsProps) {
         </section>
       )}
 
-      {/* Follow-up options */}
-      {result.followUpOptions.length > 0 && (
+      {/* Follow-up options — only shown when synthesis is complete */}
+      {!synthesisLoading && result.followUpOptions.length > 0 && (
         <section>
           <FollowUpOptions
             options={result.followUpOptions}

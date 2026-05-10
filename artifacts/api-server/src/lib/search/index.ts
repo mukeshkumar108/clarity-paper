@@ -13,12 +13,52 @@ import { validateGrounding } from "./groundingValidator";
 import { buildEvidenceSpans, computeSpanDiagnostics } from "./evidenceSpans";
 import { enrichWithUnpaywall } from "./unpaywallClient";
 import { logger } from "../logger";
-import type { SearchResult, RetrievedPaper, RankedPaper, DebugMetadata, PipelineLatency, EvidenceSpan, GroundingDiagnostics } from "./types";
+import type { SearchResult, SearchProgressEvent, RetrievedPaper, RankedPaper, DebugMetadata, PipelineLatency, EvidenceSpan, GroundingDiagnostics } from "./types";
 import type { SynthesisOutput } from "./synthesizer";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const RETRACTION_FRESHNESS_MS = 24 * 60 * 60 * 1000; // 24h
 const SYNTHESIS_TIMEOUT_MS = 90_000; // 90s
+
+// ─── Query result cache ───────────────────────────────────────────────────────
+// In-memory cache keyed on normalised query string. Avoids re-running the full
+// pipeline for repeated or near-identical queries within the TTL window.
+// The sessionId is always generated fresh so user history remains correct.
+
+const QUERY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+type CachedResult = Omit<SearchResult, "sessionId">;
+
+interface QueryCacheEntry {
+  result: CachedResult;
+  cachedAt: number;
+}
+
+const queryCache = new Map<string, QueryCacheEntry>();
+
+function normalizeQueryKey(query: string): string {
+  return query.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function getQueryCache(query: string): CachedResult | null {
+  const key = normalizeQueryKey(query);
+  const entry = queryCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > QUERY_CACHE_TTL_MS) {
+    queryCache.delete(key);
+    return null;
+  }
+  return entry.result;
+}
+
+function setQueryCache(query: string, result: CachedResult): void {
+  queryCache.set(normalizeQueryKey(query), { result, cachedAt: Date.now() });
+  // Cap cache size at 200 entries — evict oldest on overflow
+  if (queryCache.size > 200) {
+    const oldest = queryCache.keys().next().value;
+    if (oldest) queryCache.delete(oldest);
+  }
+}
 
 function makeCacheKey(paper: RetrievedPaper): string {
   if (paper.doi) return `doi:${paper.doi.toLowerCase()}`;
@@ -208,9 +248,41 @@ async function pruneOldSessions(userId: number): Promise<void> {
 export async function runSearch(
   userId: number,
   query: string,
+  onProgress?: (event: SearchProgressEvent) => void,
 ): Promise<SearchResult> {
   const searchStart = Date.now();
   logger.info({ userId, query }, "Search started");
+
+  // ── Query cache check ──────────────────────────────────────────────────────
+  const cached = getQueryCache(query);
+  if (cached) {
+    logger.info({ query }, "Query cache hit — emitting events and persisting session");
+    // Emit progress events immediately so streaming clients get fast response
+    onProgress?.({ type: "papers", papers: cached.papers, evidenceSnapshot: cached.evidenceSnapshot, noEvidence: cached.noEvidence });
+    onProgress?.({ type: "synthesis", synthesisText: cached.synthesisText, confidence: cached.confidence, evidenceSpans: cached.evidenceSpans, followUpOptions: cached.followUpOptions, coverageNote: "abstracts_only" });
+    // Still persist session so user history is correct
+    let sessionId = 0;
+    try {
+      const [session] = await db
+        .insert(searchSessionsTable)
+        .values({
+          userId,
+          query,
+          plannerOutput: cached.plan as any,
+          papers: cached.papers as any,
+          synthesisText: cached.synthesisText,
+          confidence: cached.confidence,
+          evidenceSnapshot: cached.evidenceSnapshot as any,
+          followUpOptions: cached.followUpOptions as any,
+        })
+        .returning();
+      sessionId = session.id;
+      pruneOldSessions(userId).catch((err) => logger.warn({ err }, "Session pruning failed"));
+    } catch (err) {
+      logger.warn({ err }, "Failed to persist cached search session");
+    }
+    return { ...cached, sessionId };
+  }
 
   // 1. Plan
   const t0 = Date.now();
@@ -310,10 +382,14 @@ export async function runSearch(
   }
 
   const snapshot = buildEvidenceSnapshot(finalPapers);
+  const noEvidence = finalPapers.length === 0;
+
+  // ── Papers ready — emit first streaming event ────────────────────────────
+  // Clients receive paper cards immediately while synthesis LLM call runs.
+  onProgress?.({ type: "papers", papers: finalPapers, evidenceSnapshot: snapshot, noEvidence });
 
   // 6. Synthesise (with timeout) + Unpaywall enrichment in parallel
   const t6 = Date.now();
-  const noEvidence = finalPapers.length === 0;
 
   // Start Unpaywall enrichment alongside synthesis — hides network latency
   const unpaywallPromise = enrichWithUnpaywall(finalPapers).catch((err) => {
@@ -371,6 +447,16 @@ export async function runSearch(
     "Evidence span diagnostics",
   );
 
+  // ── Synthesis ready — emit second streaming event ──────────────────────────
+  onProgress?.({
+    type: "synthesis",
+    synthesisText: synthesis.synthesisText,
+    confidence: synthesis.confidence,
+    evidenceSpans,
+    followUpOptions: synthesis.followUpOptions,
+    coverageNote: "abstracts_only",
+  });
+
   // 9. Build debug metadata
   const totalMs = Date.now() - searchStart;
   const latency: PipelineLatency = { planMs, retrieveMs, dedupeMs, rankMs, judgeMs, repairMs, synthesisMs, totalMs };
@@ -420,7 +506,7 @@ export async function runSearch(
     logger.warn({ err }, "Failed to persist search session — returning results anyway");
   }
 
-  return {
+  const searchResult: SearchResult = {
     sessionId: sessionId ?? 0,
     query,
     plan,
@@ -434,6 +520,12 @@ export async function runSearch(
     coverageNote: "abstracts_only" as const,
     debugMetadata,
   };
+
+  // Populate query cache (exclude sessionId — always generated fresh)
+  const { sessionId: _sid, ...cacheable } = searchResult;
+  setQueryCache(query, cacheable);
+
+  return searchResult;
 }
 
 export async function getSearchSession(

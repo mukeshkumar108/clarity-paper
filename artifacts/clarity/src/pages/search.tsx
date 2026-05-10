@@ -6,27 +6,23 @@ import { SearchInput } from "@/components/search/SearchInput";
 import { SearchResults } from "@/components/search/SearchResults";
 import { RecentSearches } from "@/components/search/RecentSearches";
 import { useToast } from "@/hooks/use-toast";
+import { useStreamingSearch } from "@/hooks/use-streaming-search";
 import { AlertCircle, Microscope } from "lucide-react";
 import { SearchLoadingState } from "@/components/search/SearchLoadingState";
-import type { SearchResult, SearchSessionSummary } from "@/lib/search-types";
+import type { SearchResult, SearchSessionSummary, EvidenceSnapshot } from "@/lib/search-types";
 
 const SESSIONS_QUERY_KEY = ["search-sessions"];
+
+const EMPTY_SNAPSHOT: EvidenceSnapshot = {
+  metaAnalyses: 0, rcts: 0, humanObservational: 0, mechanistic: 0,
+  conflicting: 0, totalPapers: 0, overallConfidence: "preliminary",
+};
 
 function useSearchSessions() {
   return useQuery<SearchSessionSummary[]>({
     queryKey: SESSIONS_QUERY_KEY,
     queryFn: () => customFetch<SearchSessionSummary[]>("/api/search/sessions"),
     staleTime: 30_000,
-  });
-}
-
-function useRunSearch() {
-  return useMutation<SearchResult, Error, string>({
-    mutationFn: (query: string) =>
-      customFetch<SearchResult>("/api/search", {
-        method: "POST",
-        body: JSON.stringify({ query }),
-      }),
   });
 }
 
@@ -37,51 +33,42 @@ function useLoadSession() {
   });
 }
 
-type SearchState =
-  | { kind: "idle" }
-  | { kind: "loading"; query: string }
-  | { kind: "result"; result: SearchResult }
-  | { kind: "error"; message: string };
-
 export default function Search() {
-  const [state, setState] = useState<SearchState>({ kind: "idle" });
   const [currentQuery, setCurrentQuery] = useState("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data: sessions, isLoading: sessionsLoading } = useSearchSessions();
-  const searchMutation = useRunSearch();
   const loadSessionMutation = useLoadSession();
+  const { state, setState, startSearch } = useStreamingSearch();
 
   const handleSearch = useCallback(
     async (query: string) => {
       setCurrentQuery(query);
-      setState({ kind: "loading", query });
-
       try {
-        const result = await searchMutation.mutateAsync(query);
-        setState({ kind: "result", result });
+        await startSearch(query);
+        // Refresh session list once the search fully completes (done event sets sessionId)
         queryClient.invalidateQueries({ queryKey: SESSIONS_QUERY_KEY });
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Search failed. Please try again.";
-        setState({ kind: "error", message });
-        toast({ title: "Search failed", description: message, variant: "destructive" });
+      } catch {
+        // error state is set inside the hook
+        toast({
+          title: "Search failed",
+          description: "Please try again.",
+          variant: "destructive",
+        });
       }
     },
-    [searchMutation, queryClient, toast],
+    [startSearch, queryClient, toast],
   );
 
   const handleFollowUp = useCallback(
-    (option: string) => {
-      handleSearch(option);
-    },
+    (option: string) => handleSearch(option),
     [handleSearch],
   );
 
   const handleSessionSelect = useCallback(
     async (sessionId: number) => {
-      setState({ kind: "loading", query: "" });
+      setState({ kind: "searching", query: "" });
       try {
         const result = await loadSessionMutation.mutateAsync(sessionId);
         setCurrentQuery(result.query);
@@ -95,10 +82,32 @@ export default function Search() {
         });
       }
     },
-    [loadSessionMutation, toast],
+    [loadSessionMutation, setState, toast],
   );
 
-  const isLoading = state.kind === "loading";
+  const isLoading = state.kind === "searching";
+
+  // Build display props for SearchResults when papers are ready (streaming) or fully complete
+  const displayResult: SearchResult | null =
+    state.kind === "papers_ready"
+      ? {
+          sessionId: 0,
+          query: state.query,
+          plan: { intentType: "topic_exploration", userQuestion: state.query, entities: [], hiddenGoals: [], queryVariants: [], followUpQuestions: [] },
+          papers: state.papers,
+          evidenceSnapshot: state.evidenceSnapshot,
+          noEvidence: state.noEvidence,
+          synthesisText: "",
+          confidence: "preliminary",
+          evidenceSpans: [],
+          followUpOptions: [],
+          coverageNote: "abstracts_only",
+        }
+      : state.kind === "result"
+        ? state.result
+        : null;
+
+  const synthesisLoading = state.kind === "papers_ready";
 
   return (
     <DashboardLayout>
@@ -128,8 +137,8 @@ export default function Search() {
           key={currentQuery}
         />
 
-        {/* Loading state */}
-        {state.kind === "loading" && <SearchLoadingState />}
+        {/* Loading — before first papers arrive */}
+        {state.kind === "searching" && <SearchLoadingState />}
 
         {/* Error state */}
         {state.kind === "error" && (
@@ -144,9 +153,13 @@ export default function Search() {
           </div>
         )}
 
-        {/* Results */}
-        {state.kind === "result" && (
-          <SearchResults result={state.result} onFollowUp={handleFollowUp} />
+        {/* Progressive results — papers immediately, synthesis skeleton until ready */}
+        {displayResult && (
+          <SearchResults
+            result={displayResult}
+            onFollowUp={handleFollowUp}
+            synthesisLoading={synthesisLoading}
+          />
         )}
 
         {/* Idle: show recent searches */}

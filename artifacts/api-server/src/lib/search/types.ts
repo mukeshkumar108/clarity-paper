@@ -229,6 +229,27 @@ export interface DebugMetadata {
   paperCountAfterRepair: number | null;
 }
 
+// ─── SSE streaming ────────────────────────────────────────────────────────────
+
+/** Events emitted during a streaming search. Used by POST /search/stream. */
+export type SearchProgressEvent =
+  | {
+      type: "papers";
+      papers: RankedPaper[];
+      evidenceSnapshot: EvidenceSnapshot;
+      noEvidence: boolean;
+    }
+  | {
+      type: "synthesis";
+      synthesisText: string;
+      confidence: string;
+      evidenceSpans: EvidenceSpan[];
+      followUpOptions: string[];
+      coverageNote: "abstracts_only";
+    }
+  | { type: "done"; sessionId: number }
+  | { type: "error"; message: string };
+
 export interface SearchResult {
   sessionId: number;
   query: string;
