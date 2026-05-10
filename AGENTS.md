@@ -24,6 +24,13 @@ Clarity Paper is a scientific literacy tool. It helps people
 understand and evaluate research papers — not just what a study 
 says, but whether they should trust it and why.
 
+It now has two user-facing surfaces:
+- a search-first research exploration flow
+- a document-first review flow for uploaded papers
+
+Both surfaces are aiming at the same product promise: visible, 
+inspectable evidence rather than floating AI explanation.
+
 It is not a summariser. It is not a medical advisor. It is a 
 trust-focused reviewer with a human editorial voice.
 
@@ -181,7 +188,7 @@ Specific things that signal bad output:
 
 ---
 
-## Current State (as of 2026-05-07)
+## Current State (as of 2026-05-10)
 
 **Working:**
 - Two-pass pipeline end to end
@@ -191,11 +198,21 @@ Specific things that signal bad output:
 - All five prose sections generating correctly
 - PDF sanitisation before Pass 1
 - Single-pass full-document structured extraction
+- Deployed production stack on Vercel + Railway + Railway Postgres
+- Demo papers seeded into production
+- Session auth working through Vercel `/api` proxy to Railway backend
+- Search-first product surface and retrieval docs have been added
+- Readable source rendering for markdown, PDF-extracted text, and plaintext
+- Deterministic text cleanup before rendering (`normalizeReadableText`)
+- Visible grounding UI: evidence cards, support labels, source anchoring
+- Click-claim-to-source highlighting in the document workspace
+- Q&A UI now distinguishes `[doc]` and `[general]` answer segments
 
 **Next priorities:**
 - Usage limits removed for v1 testing
 - Semantic Scholar integration for related papers
-- Search entry point (query first, no paper required)
+- Full backend provenance for Q&A answers and multi-passage support
+- Better mobile grounding ergonomics for the document workspace
 
 **Not started yet:**
 - Claim verification across multiple papers
@@ -214,6 +231,10 @@ Specific things that signal bad output:
 - The PDF sanitisation step order (must happen before Pass 1)
 - Progressive disclosure layout in the frontend
 - The editorial voice specification in PROMPTS.md
+- The visible-grounding principle: if we have supporting source text,
+  the UI should expose a path back to it
+- Deterministic source rendering: document cleanup/rendering must not
+  use an LLM to rewrite uploaded text before display
 
 If you are asked to make a change that conflicts with any of 
 the above, flag it explicitly before proceeding. Do not 

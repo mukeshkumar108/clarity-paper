@@ -2,6 +2,13 @@
 
 Clarity Paper is a trust-focused research paper review app. Users upload or paste a paper, Pass 1 extracts structured scientific data, and Pass 2 rewrites that into human editorial prose.
 
+The current frontend also exposes a visible trust layer:
+
+- readable source rendering for uploaded documents
+- evidence cards for grounded findings
+- click-to-anchor navigation from claims back into source text
+- Q&A provenance labels (`[doc]` and `[general]`)
+
 Read these first before changing anything:
 
 1. `AGENTS.md`
@@ -37,9 +44,25 @@ Use one GitHub repo, not separate frontend/backend repos.
 
 This repo is now wired for split deployment:
 
-- Frontend reads `VITE_API_BASE_URL` for cross-origin API requests.
+- Vercel proxies `/api/*` to the Railway backend so auth/session cookies stay same-origin in production.
 - Backend uses Postgres-backed sessions via `connect-pg-simple`.
-- Backend can be deployed on Railway with `artifacts/api-server/Dockerfile`.
+- Backend is deployed on Railway using the repo-root `Dockerfile`.
+
+## Current production status
+
+Deployed and working:
+
+- Vercel frontend is live
+- Railway API server is live
+- Railway Postgres is attached
+- Demo papers are seeded into production
+- Login/session persistence works through the Vercel `/api` proxy
+- Readable document rendering is live
+- Claim-to-source grounding UI is live in the document workspace
+
+Known issue:
+
+- Q&A still needs richer backend provenance payloads; the current UI can display provenance labels and evidence cards, but some answers still rely on best-available heuristic evidence matching
 
 ## Vercel setup
 
@@ -47,18 +70,19 @@ Create a Vercel project with root directory:
 
 `artifacts/clarity`
 
-Set:
+Do not set `VITE_API_BASE_URL` for production when using the Vercel proxy setup.
 
-- `VITE_API_BASE_URL=https://YOUR-RAILWAY-BACKEND.up.railway.app`
+`artifacts/clarity/vercel.json` is responsible for:
 
-`artifacts/clarity/vercel.json` adds the SPA rewrite for client-side routing.
+- proxying `/api/*` to Railway
+- rewriting all other non-API routes to `index.html` for SPA routing
 
 ## Railway setup
 
 Create one Railway project with:
 
 1. A PostgreSQL service
-2. A service for this repo using `artifacts/api-server/Dockerfile`
+2. A service for this repo using the repo-root `Dockerfile`
 
 Set these backend variables:
 
@@ -98,3 +122,5 @@ Then manually test:
 - upload
 - analysis
 - Q&A
+
+If auth appears to succeed but follow-up authenticated API calls return `401`, verify that the frontend is using the Vercel `/api` proxy rather than calling Railway cross-origin directly.

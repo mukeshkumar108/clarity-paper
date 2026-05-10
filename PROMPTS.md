@@ -168,3 +168,25 @@ Return strict JSON only matching the schema exactly.
 - **Balance**: Warm but not dumbed down; curious but not breathless; direct but not cold.
 - **Engagement**: Start "mid-thought" to hook the reader; avoid journalistic or report-style openings.
 - **Honesty**: Make judgment calls on study quality ("this is the part worth being cautious about") rather than listing limitations mechanically.
+
+## Document Q&A Provenance Contract
+
+The frontend now expects document Q&A answers to preserve provenance explicitly.
+
+Current rules:
+
+- Statements grounded in the uploaded paper should be labeled `[doc]`
+- Background or bridging explanation not directly supported by the uploaded paper should be labeled `[general]`
+- Multiple blocks are allowed
+- Do not use `[general]` when the same point can be supported by the document itself
+- The answer should stay readable and editorial, but the provenance labels must remain visible
+
+Expected format:
+
+```text
+[doc] What the paper directly shows.
+
+[general] Useful background or interpretation that helps the reader understand the document-grounded point.
+```
+
+This is not optional presentation sugar. The visible separation between document-grounded claims and general context is part of the trust model.

@@ -2,6 +2,31 @@
 
 All notable product and engineering changes should be tracked here.
 
+## 2026-05-10
+
+### Reader UX
+- replaced raw plaintext source rendering with `ReadableDocumentView`
+- added markdown rendering with `react-markdown` + `remark-gfm` + `rehype-sanitize`
+- added deterministic source cleanup via `normalizeReadableText(raw)`
+- improved long-form typography, measure, line-height, table/code/blockquote styling, and reading rhythm
+- unified markdown, PDF-extracted text, and plaintext into one calmer document-reading shell
+
+### Trust Layer / Grounding
+- added visible grounding banner to the analysis workspace
+- added evidence cards for findings with source snippet, support type, confidence summary, and evidence type
+- clicking a finding or evidence card now anchors the supporting passage in the source pane
+- source pane now highlights the active supporting snippet and scrolls it into view
+- introduced restrained trust language for `direct`, `indirect`, `contextual`, and `general` support
+
+### Q&A UX
+- document Q&A now renders provenance labels visibly in the UI: `[doc]` and `[general]`
+- added expandable supporting-evidence cards under grounded Q&A answers
+- Q&A evidence navigation now reuses the same source-anchoring flow as findings
+
+### Production / Platform
+- documented the live split deployment more clearly: Vercel frontend, Railway API, Railway Postgres
+- documented the same-origin `/api` proxy requirement as part of the stable auth/session model
+
 ## 2026-05-08
 
 ### Product
