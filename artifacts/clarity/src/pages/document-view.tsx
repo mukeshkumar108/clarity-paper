@@ -31,7 +31,6 @@ import {
   Settings,
   Info,
   CheckCircle2,
-  BookOpen,
   ShieldCheck,
   ScanSearch,
   Link2,
@@ -43,7 +42,6 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { DashboardLayout } from "@/components/layouts/DashboardLayout";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -82,13 +80,6 @@ function trustPillClasses(confidenceLevel?: string): string {
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
-
-const CLAIM_TYPE_LABELS: Record<string, string> = {
-  causal: "Causal — proves cause & effect",
-  correlational: "Correlational — not causation",
-  theoretical: "Theoretical / model-based",
-  speculative: "Speculative / hypothesis",
-};
 
 function normaliseTokens(value: string): string[] {
   return value
@@ -178,20 +169,6 @@ function pickBestEvidence(
     confidenceLabel: confidenceSummary(chosen.strengthOfSupport, confidenceLevel),
     evidenceType: classifyEvidenceType(studyType),
   };
-}
-
-function parseGroundedAnswer(answer: string): ParsedAnswerSegment[] {
-  const matches = answer.matchAll(/\[(doc|general)\]\s*([\s\S]*?)(?=(?:\n?\[(?:doc|general)\])|$)/gi);
-  const parsed = Array.from(matches)
-    .map((match) => ({
-      label: match[1]?.toLowerCase() === "general" ? "general" as const : "doc" as const,
-      text: match[2]?.trim() ?? "",
-    }))
-    .filter((segment) => segment.text.length > 0);
-
-  if (parsed.length > 0) return parsed;
-
-  return [{ label: "doc", text: answer.trim() }];
 }
 
 function buildQuestionEvidence(
@@ -309,11 +286,6 @@ type GroundedEvidence = {
   confidenceLabel: string;
   evidenceType: string;
 };
-type ParsedAnswerSegment = {
-  label: "doc" | "general";
-  text: string;
-};
-
 const STOPWORDS = new Set([
   "the", "and", "for", "with", "that", "this", "from", "into", "your", "have", "were",
   "what", "when", "where", "which", "their", "there", "about", "because", "could", "would",
@@ -459,7 +431,6 @@ function QuestionAnswerCard({
   activeEvidenceId: string | null;
   onActivateEvidence: (evidence: GroundedEvidence) => void;
 }) {
-  const segments = parseGroundedAnswer(answer);
   const [showEvidence, setShowEvidence] = useState(false);
 
   return (
@@ -472,23 +443,9 @@ function QuestionAnswerCard({
       <div className="flex justify-start">
         <div className="max-w-[95%] rounded-2xl border border-pebble-gray bg-white p-4 shadow-subtle">
           <div className="space-y-3">
-            {segments.map((segment, index) => (
-              <div key={`${segment.label}-${index}`} className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
-                    segment.label === "doc"
-                      ? "border-forest-green-action/20 bg-forest-green-action/6 text-forest-green-action"
-                      : "border-pebble-gray bg-pebble-gray/55 text-muted-stone",
-                  )}>
-                    [{segment.label}]
-                  </span>
-                </div>
-                <div className="readable-prose prose prose-stone max-w-none text-[14px]">
-                  <ReactMarkdown>{segment.text}</ReactMarkdown>
-                </div>
-              </div>
-            ))}
+            <div className="readable-prose prose prose-stone max-w-none text-[14px]">
+              <ReactMarkdown>{answer}</ReactMarkdown>
+            </div>
 
             {supportingEvidence.length > 0 && (
               <div className="rounded-[18px] border border-pebble-gray/85 bg-canvas-parchment/65 px-3 py-3">
@@ -610,8 +567,6 @@ export default function DocumentView({ id }: { id: string }) {
 
   const confLevel = viewAnalysis?.confidenceLevel;
   const confLabel = confLevel ? `${capitalise(confLevel)} confidence` : null;
-  const claimType = viewAnalysis?.whatPaperActuallyShows?.claimType ?? "";
-  const claimLabel = CLAIM_TYPE_LABELS[claimType] ?? claimType;
   const keyFindings = viewAnalysis?.keyFindings ?? [];
   const studyTypeForEvidence =
     viewAnalysis?.whatPaperActuallyShows?.studyType || viewAnalysis?.evidenceQuality?.studyType;
@@ -1157,25 +1112,6 @@ export default function DocumentView({ id }: { id: string }) {
                         <p className="text-[15px] leading-[1.8] text-inkwell/80 font-serif italic">
                           {trustNarrative}
                         </p>
-                        <Separator className="bg-pebble-gray" />
-                        <div className="grid sm:grid-cols-2 gap-5">
-                          <div>
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone block mb-1.5">
-                              Study Quality
-                            </span>
-                            <p className="text-[14px] font-medium text-deep-shadow">
-                              {viewAnalysis?.trustRating?.rating || "—"} Evidence
-                            </p>
-                          </div>
-                          <div>
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone block mb-1.5">
-                              Recommendation
-                            </span>
-                            <p className="text-[14px] font-medium text-deep-shadow">
-                              {viewAnalysis?.practicalUse?.recommendation || "—"}
-                            </p>
-                          </div>
-                        </div>
                       </motion.section>
                     )}
 
@@ -1252,42 +1188,6 @@ export default function DocumentView({ id }: { id: string }) {
                       </motion.section>
                     )}
 
-                    {/* Research profile */}
-                    <section className="p-7 rounded-[24px] border border-pebble-gray bg-onyx-outline/5 space-y-5">
-                      <div className="flex items-center gap-2">
-                        <BookOpen className="w-4 h-4 text-muted-stone" />
-                        <h3 className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted-stone">Research Profile</h3>
-                      </div>
-                      <div className="grid grid-cols-2 gap-x-10 gap-y-5">
-                        {viewAnalysis?.whatPaperActuallyShows?.studyType && (
-                          <div>
-                            <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-muted-stone/60 mb-1.5">Study Type</span>
-                            <p className="text-[13px] font-semibold text-deep-shadow">{viewAnalysis.whatPaperActuallyShows.studyType}</p>
-                          </div>
-                        )}
-                        {viewAnalysis?.evidenceQuality?.sampleSize && (
-                          <div>
-                            <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-muted-stone/60 mb-1.5">Sample Size</span>
-                            <p className="text-[13px] font-semibold text-deep-shadow">{viewAnalysis.evidenceQuality.sampleSize}</p>
-                          </div>
-                        )}
-                        {viewAnalysis?.whatPaperActuallyShows?.outcomesMeasured && (
-                          <div className="col-span-2">
-                            <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-muted-stone/60 mb-1.5">Main Outcome</span>
-                            <p className="text-[13px] font-semibold text-deep-shadow leading-relaxed">{viewAnalysis.whatPaperActuallyShows.outcomesMeasured}</p>
-                          </div>
-                        )}
-                        {claimLabel && (
-                          <div className="col-span-2">
-                            <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-muted-stone/60 mb-1.5">Claim Type</span>
-                            <Badge variant="outline" className="mt-0.5 border-pebble-gray text-muted-stone font-medium text-[12px]">
-                              {claimLabel}
-                            </Badge>
-                          </div>
-                        )}
-                      </div>
-                    </section>
-
                     {/* Disclaimer */}
                     {hasText(viewAnalysis?.disclaimer) && (
                       <section className="pt-8 border-t border-pebble-gray opacity-55">
@@ -1316,17 +1216,14 @@ export default function DocumentView({ id }: { id: string }) {
                 style={{ minWidth: 0 }}
               >
                 <div className="px-5 py-3 border-b border-pebble-gray bg-pebble-gray/10 flex items-center justify-between shrink-0">
-                  <div className="space-y-2">
+                  <div className="space-y-1">
                     <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-deep-shadow">
                       <MessageSquare className="w-4 h-4" />
                       Research Q&A
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.14em]">
-                      <span className="rounded-full border border-forest-green-action/20 bg-forest-green-action/6 px-2.5 py-1 font-semibold text-forest-green-action">[doc]</span>
-                      <span className="text-muted-stone">grounded in this paper</span>
-                      <span className="rounded-full border border-pebble-gray bg-pebble-gray/60 px-2.5 py-1 font-semibold text-muted-stone">[general]</span>
-                      <span className="text-muted-stone">background context</span>
-                    </div>
+                    <p className="text-[12px] leading-[1.55] text-muted-stone">
+                      Ask what the paper actually shows, where the catch is, or what still feels unresolved.
+                    </p>
                   </div>
                   <Button variant="ghost" size="icon" onClick={() => setShowChat(false)} className="h-8 w-8 rounded-lg hover:bg-pebble-gray/60">
                     <X className="w-4 h-4" />

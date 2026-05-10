@@ -16,10 +16,25 @@ const LEGAL_DISCLAIMER =
 const STRUCTURED_MODEL =
   process.env.OPENROUTER_STRUCTURED_MODEL || process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
 const EDITORIAL_MODEL = process.env.OPENROUTER_EDITORIAL_MODEL || "google/gemini-2.5-flash";
-const FAST_MODEL =
-  process.env.OPENROUTER_FAST_MODEL || "google/gemini-2.5-flash";
+const EDITORIAL_BACKUP_MODEL =
+  process.env.OPENROUTER_EDITORIAL_BACKUP_MODEL || "anthropic/claude-3.5-haiku";
+const FAST_STRUCTURED_MODEL =
+  process.env.OPENROUTER_FAST_STRUCTURED_MODEL ||
+  process.env.OPENROUTER_FAST_MODEL ||
+  "google/gemini-2.5-flash";
+const FAST_EDITORIAL_MODEL =
+  process.env.OPENROUTER_FAST_EDITORIAL_MODEL ||
+  process.env.OPENROUTER_FAST_MODEL ||
+  "anthropic/claude-3.5-haiku";
 const REVIEW_MODEL = process.env.OPENROUTER_REVIEW_MODEL || EDITORIAL_MODEL;
 const REVIEW_PASS_ENABLED = process.env.CLARITY_ENABLE_REVIEW_PASS === "true";
+
+class EditorialSynthesisFailedError extends Error {
+  constructor(message = "EDITORIAL_SYNTHESIS_FAILED") {
+    super(message);
+    this.name = "EditorialSynthesisFailedError";
+  }
+}
 
 const STRUCTURED_SYSTEM_PROMPT = `You are a scientific research analyst. Your job is to extract structured understanding from a research paper or abstract.
 
@@ -292,7 +307,12 @@ export async function analyseDocument(
 
   const fast = options?.fastMode ?? false;
   logger.info(
-    { textLength: text.length, structuredModel: STRUCTURED_MODEL, fast },
+    {
+      textLength: text.length,
+      structuredModel: fast ? FAST_STRUCTURED_MODEL : STRUCTURED_MODEL,
+      editorialModel: fast ? FAST_EDITORIAL_MODEL : EDITORIAL_MODEL,
+      fast,
+    },
     "Analysing document",
   );
   const structured = await runStructuredPass(text, documentType, researchField, goal, fast);
@@ -330,7 +350,7 @@ Important:
 
   try {
     const raw = await callLLM(STRUCTURED_SYSTEM_PROMPT, userMessage, structuredAnalysisSchema, {
-      model: fast ? FAST_MODEL : STRUCTURED_MODEL,
+      model: fast ? FAST_STRUCTURED_MODEL : STRUCTURED_MODEL,
       temperature: 0.1,
       timeoutMs: fast ? 45_000 : 90_000,
     });
@@ -358,17 +378,49 @@ async function runEditorialPass(
       : "";
   const systemPrompt = languagePrefix + EDITORIAL_SYSTEM_PROMPT;
 
-  try {
-    const raw = await callLLM(systemPrompt, userMessage, editorialSummarySchema, {
-      model: fast ? FAST_MODEL : EDITORIAL_MODEL,
-      temperature: 0.2,
-      timeoutMs: fast ? 60_000 : 180_000,
-    });
-    return editorialSummarySchema.parse(JSON.parse(raw));
-  } catch (err) {
-    logger.error({ err }, "Editorial synthesis failed");
-    return createFallbackEditorialSummary(structured);
+  const attempts = [
+    {
+      label: "primary",
+      model: fast ? FAST_EDITORIAL_MODEL : EDITORIAL_MODEL,
+      timeoutMs: fast ? 90_000 : 180_000,
+    },
+    {
+      label: "retry",
+      model: fast ? FAST_EDITORIAL_MODEL : EDITORIAL_MODEL,
+      timeoutMs: fast ? 90_000 : 180_000,
+    },
+    {
+      label: "backup",
+      model: fast ? EDITORIAL_BACKUP_MODEL : EDITORIAL_BACKUP_MODEL,
+      timeoutMs: fast ? 120_000 : 210_000,
+    },
+  ] as const;
+
+  let lastError: unknown = null;
+
+  for (const attempt of attempts) {
+    try {
+      const raw = await callLLM(systemPrompt, userMessage, editorialSummarySchema, {
+        model: attempt.model,
+        temperature: 0.2,
+        timeoutMs: attempt.timeoutMs,
+      });
+      logger.info(
+        { model: attempt.model, attempt: attempt.label, fast },
+        "Editorial synthesis succeeded",
+      );
+      return editorialSummarySchema.parse(JSON.parse(raw));
+    } catch (err) {
+      lastError = err;
+      logger.warn(
+        { err, model: attempt.model, attempt: attempt.label, fast },
+        "Editorial synthesis attempt failed",
+      );
+    }
   }
+
+  logger.error({ err: lastError, fast }, "Editorial synthesis failed after retry and backup");
+  throw new EditorialSynthesisFailedError();
 }
 
 async function reviewFinalAnalysis(
@@ -477,10 +529,6 @@ Improve the draft so it is clearer, more coherent, and more useful to a non-expe
   }
 }
 
-function dedupeStrings(values: string[]): string[] {
-  return [...new Set(values.map((item) => item.trim()).filter(Boolean))];
-}
-
 function buildEditorialContext(structured: StructuredAnalysisDraft): string {
   const handoff = {
     paper: {
@@ -534,48 +582,6 @@ function buildEditorialContext(structured: StructuredAnalysisDraft): string {
 
   return JSON.stringify(handoff, null, 2);
 }
-
-function createFallbackEditorialSummary(structured: StructuredAnalysisDraft): EditorialSummaryDraft {
-  const mainResult = structured.study.mainResult || "The paper reports a signal";
-  const trustReason = structured.trust.reason || "The evidence needs careful interpretation.";
-  return {
-    openingHook:
-      structured.relevance.whyItMatters ||
-      "This paper points to an idea that could matter in real life, but it needs context to be interpreted properly.",
-    orientation: mainResult,
-    findings: dedupeStrings(
-      structured.findings.slice(0, 4).map((item) => `${item.finding}|||${item.plainMeaning || item.finding}`).filter(Boolean),
-    ).map((item) => {
-      const [heading, body] = item.split("|||");
-      return { heading, body };
-    }),
-    trustNarrative: trustReason,
-    questionsWorthAsking: structured.suggestedQuestions.slice(0, 4),
-    deeperDive: {
-      howDesignedTitle: "How the study was designed",
-      howDesignedBody:
-        structured.methodologySnapshot.design ||
-        structured.study.type ||
-        "The available text only gives a partial view of the design.",
-      cantTellUsTitle: "What this study can't tell us",
-      cantTellUsBody:
-        structured.nonClaims[0] ||
-        structured.limitations[0]?.whyItMatters ||
-        "It leaves open questions about how broadly the result applies.",
-      biggerPictureTitle: "Where this fits in the bigger picture",
-      biggerPictureBody:
-        structured.relevance.practicalMeaning ||
-        "Treat it as one useful piece of evidence rather than a complete answer on its own.",
-      technicallyCuriousTitle: "For the technically curious",
-      technicallyCuriousBody:
-        structured.methodologySnapshot.analysisMethod ||
-        structured.evidenceSignals.statisticalDetail ||
-        structured.evidenceSignals.effectSizes ||
-        "The available text gives only a partial technical picture, so the design and limitations matter more than any one number here.",
-    },
-  };
-}
-
 
 export async function answerDocumentQuestion(
   documentText: string,

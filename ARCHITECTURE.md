@@ -39,7 +39,10 @@ User query
 | Reranker | `cohere/rerank-4-fast` | `OPENROUTER_RERANK_MODEL` | Semantic relevance scoring; set to `"disabled"` to skip |
 | Doc analysis Pass 1 | `google/gemini-2.5-flash` | `OPENROUTER_STRUCTURED_MODEL` | Complex JSON extraction from full papers; needs full Flash |
 | Doc analysis Pass 2 | `google/gemini-2.5-flash` | `OPENROUTER_EDITORIAL_MODEL` | User-facing prose; plain english summary |
-| Doc analysis fast mode | `google/gemini-2.5-flash` | `OPENROUTER_FAST_MODEL` | Short abstracts from search results; Flash is fine |
+| Doc analysis fast structured | `google/gemini-2.5-flash` | `OPENROUTER_FAST_STRUCTURED_MODEL` | Fast structured extraction for short search-result analyses |
+| Doc analysis fast editorial | `anthropic/claude-3.5-haiku` | `OPENROUTER_FAST_EDITORIAL_MODEL` | Fast editorial prose for short search-result analyses |
+| Doc analysis editorial backup | `anthropic/claude-3.5-haiku` | `OPENROUTER_EDITORIAL_BACKUP_MODEL` | Backup Pass 2 model when the primary editorial path times out or fails |
+| Search synthesis backup | `anthropic/claude-3.5-haiku` | `OPENROUTER_SEARCH_BACKUP_MODEL` | Backup synthesis model when the primary search editorial path fails |
 
 ### Retrieval Sources
 
@@ -136,8 +139,9 @@ The core logic resides in a multi-stage LLM pipeline designed to separate factua
     - **Execution**: The full sanitised document is sent in a single Pass 1 request. There is no chunk merge step in the current pipeline.
 3.  **Pass 2: Editorial Synthesis (User-Facing)**:
     - **Goal**: Transform the structured JSON into a compelling, human-readable narrative.
-    - **Model**: `google/gemini-2.5-flash` (override: `OPENROUTER_EDITORIAL_MODEL`). Previously DeepSeek v4 Pro; switched to Flash after timeout issues.
+    - **Model**: `google/gemini-2.5-flash` (override: `OPENROUTER_EDITORIAL_MODEL`) with retry + backup failover to `OPENROUTER_EDITORIAL_BACKUP_MODEL` (default `anthropic/claude-3.5-haiku`).
     - **Output**: Narrative JSON containing hooks, findings, and trust-calibration sections.
+    - **Failure policy**: if the editorial pass still fails after retry and backup, the analysis fails. Pass 1 extraction is never shown as a user-facing fallback.
 4.  **Pass 3: Editorial Review (Optional)**:
     - **Goal**: Refine prose, ensure coherence, and remove "LLM-isms" or schema leakage.
     - **Model**: inherits `OPENROUTER_REVIEW_MODEL` (defaults to editorial model). Disabled by default; enable via `CLARITY_ENABLE_REVIEW_PASS=true`.
@@ -203,7 +207,7 @@ Shipped trust-layer UI primitives:
   - evidence type (RCT, meta-analysis, observational, mechanistic, guideline, review, etc.)
 - **Visible grounding banner** at the top of the analysis pane
 - **Evidence spotlight** banner in the source pane when a snippet is active
-- **Q&A grounding labels**: `[doc]` vs `[general]`
+- **Q&A tone over provenance tags**: document Q&A stays conversational and unlabeled; trust comes from honest uncertainty plus optional supporting evidence cards
 
 The current Q&A grounding UI is designed to accept richer backend provenance later. Where structured provenance is not yet returned, the frontend falls back to the best available `keyFindings`-based evidence match.
 

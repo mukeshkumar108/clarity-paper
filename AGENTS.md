@@ -77,6 +77,11 @@ the timeout issues that broke the Vercel → Railway proxy path
 with slower models, while remaining acceptable for the editorial
 voice.
 
+Reliability note:
+- Pass 2 retries once on the primary model
+- If that still fails, it can fall back to `OPENROUTER_EDITORIAL_BACKUP_MODEL`
+- If editorial still fails, the analysis should fail rather than rendering Pass 1-shaped fallback prose
+
 ---
 
 ## Output Structure
@@ -202,7 +207,7 @@ Specific things that signal bad output:
 - Deterministic text cleanup before rendering (`normalizeReadableText`)
 - Visible grounding UI: evidence cards, support labels, source anchoring
 - Click-claim-to-source highlighting in the document workspace
-- Document Q&A: upgraded model (gemini-2.5-flash), larger context (20k), voice-aligned prompt (flowing prose, "smart honest friend" register)
+- Document Q&A: upgraded model (gemini-2.5-flash), larger context (20k), voice-aligned prompt (flowing prose, "smart honest friend" register), no `[doc]` / `[general]` labels
 
 **Search — Working:**
 - Multi-source retrieval: Semantic Scholar + OpenAlex + EuropePMC + CORE in parallel

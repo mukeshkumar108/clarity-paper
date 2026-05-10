@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { callLLM } from "../openRouterProvider";
+import { logger } from "../logger";
 import type { RankedPaper, ResearchPlan, EvidenceSnapshot } from "./types";
 
 // Search synthesis is a short 3-4 sentence summary — Gemini Flash is fast and
@@ -8,6 +9,8 @@ import type { RankedPaper, ResearchPlan, EvidenceSnapshot } from "./types";
 // Synthesis is 3-4 sentences of structured JSON — Flash Lite is fast and accurate.
 const SEARCH_MODEL =
   process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash-lite";
+const SEARCH_BACKUP_MODEL =
+  process.env.OPENROUTER_SEARCH_BACKUP_MODEL ?? "anthropic/claude-3.5-haiku";
 
 const synthesisOutputSchema = z.object({
   synthesisText: z.string(),
@@ -24,15 +27,19 @@ const synthesisOutputSchema = z.object({
 
 export type SynthesisOutput = z.infer<typeof synthesisOutputSchema>;
 
-const SYNTHESIS_SYSTEM_PROMPT = `You are an evidence-aware science communicator. You have been given a set of research paper abstracts retrieved for a user's health or scientific question. Your job is to orient the user honestly — not to be impressive, but to be trustworthy.
+const SYNTHESIS_SYSTEM_PROMPT = `You are Clarity's editorial search layer. You have been given a set of research paper abstracts retrieved for a user's health or scientific question. Your job is to make the evidence feel understandable, interesting, and honest without pretending the papers say more than they do.
 
 VOICE
 Write like a smart, honest friend who understands science. Warm but not cheerleading. Curious but not breathless. Direct about uncertainty. The papers are the authority — you are the guide.
+
+This is not a briefing note. It is not an academic proof. It is not PubMed in paragraph form.
+The user should come away thinking "okay, now I get what the actual story is here" and feel curious enough to inspect the papers.
 
 SYNTHESIS TEXT (synthesisText)
 Write 3-4 sentences that orient the user based on what the retrieved abstracts actually show. This is a navigation aid, not a verdict.
 
 Rules for synthesis text:
+- Start with the human version of the question, not with academic throat-clearing
 - Lead with what the evidence most reliably shows in the retrieved set
 - State uncertainty or limitations in the first or second sentence — not buried at the end
 - If the evidence is mixed or contradictory: surface this explicitly in the first or second sentence. "The evidence is mixed — some studies found X while others found Y." Do not smooth over disagreement.
@@ -40,6 +47,8 @@ Rules for synthesis text:
 - For dose questions: report the doses studied, not a recommendation
 - For claim checks: distinguish what the claim says from what these studies show
 - Never use: "notably", "importantly", "furthermore", "it is worth noting"
+- Avoid dry phrases like "the literature suggests" unless they are genuinely the clearest wording
+- Do not sound like an academic assistant summarising a database
 
 CAUSAL LANGUAGE CONSTRAINT — hard rule:
 Only use causal language ("causes", "leads to", "produces", "proves") when the evidence includes RCTs or meta-analyses. For observational-only evidence, use "associated with", "linked to", "suggests", "may", "appears to".
@@ -101,6 +110,22 @@ function formatPapersForSynthesis(papers: RankedPaper[]): string {
     .join("\n\n");
 }
 
+async function attemptSynthesis(
+  userMessage: string,
+  model: string,
+  timeoutMs: number,
+): Promise<SynthesisOutput> {
+  const raw = await callLLM(
+    SYNTHESIS_SYSTEM_PROMPT,
+    userMessage,
+    synthesisOutputSchema,
+    { model, temperature: 0.3, timeoutMs },
+  );
+
+  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return synthesisOutputSchema.parse(data);
+}
+
 export async function synthesisePapers(
   plan: ResearchPlan,
   papers: RankedPaper[],
@@ -128,13 +153,41 @@ export async function synthesisePapers(
     papersText,
   ].join("\n");
 
-  const raw = await callLLM(
-    SYNTHESIS_SYSTEM_PROMPT,
-    userMessage,
-    synthesisOutputSchema,
-    { model: SEARCH_MODEL, temperature: 0.3, timeoutMs: 45_000 },
-  );
+  const attempts = [
+    { label: "primary", model: SEARCH_MODEL, timeoutMs: 45_000 },
+    { label: "retry", model: SEARCH_MODEL, timeoutMs: 45_000 },
+    { label: "backup", model: SEARCH_BACKUP_MODEL, timeoutMs: 75_000 },
+  ] as const;
 
-  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-  return synthesisOutputSchema.parse(data);
+  let lastError: unknown = null;
+
+  for (const attempt of attempts) {
+    try {
+      const result = await attemptSynthesis(userMessage, attempt.model, attempt.timeoutMs);
+      logger.info(
+        { model: attempt.model, attempt: attempt.label, query: plan.userQuestion },
+        "Search synthesis succeeded",
+      );
+      return result;
+    } catch (err) {
+      lastError = err;
+      logger.warn(
+        { err, model: attempt.model, attempt: attempt.label, query: plan.userQuestion },
+        "Search synthesis attempt failed",
+      );
+    }
+  }
+
+  logger.error({ err: lastError, query: plan.userQuestion }, "Search synthesis failed after retry and backup");
+  return {
+    synthesisText:
+      "The evidence here is still worth browsing directly. We found relevant papers, but the quick editorial readout did not complete cleanly, so it's better to treat the paper list as the source of truth for now.",
+    confidence: snapshot.overallConfidence,
+    noEvidence: papers.length === 0,
+    paperSummaries: papers.map((paper) => ({
+      externalId: paper.externalId,
+      summary: paper.plainSummary.slice(0, 200),
+    })),
+    followUpOptions: plan.followUpQuestions.slice(0, 4),
+  };
 }
