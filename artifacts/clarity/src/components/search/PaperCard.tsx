@@ -82,7 +82,7 @@ export function PaperCard({ paper, index }: PaperCardProps) {
     setAnalysing(true);
     try {
       const result = await customFetch<{ documentId: number }>(
-        "/search/analyse-paper",
+        "/api/search/analyse-paper",
         {
           method: "POST",
           body: JSON.stringify({

@@ -15,7 +15,7 @@ const SESSIONS_QUERY_KEY = ["search-sessions"];
 function useSearchSessions() {
   return useQuery<SearchSessionSummary[]>({
     queryKey: SESSIONS_QUERY_KEY,
-    queryFn: () => customFetch<SearchSessionSummary[]>("/search/sessions"),
+    queryFn: () => customFetch<SearchSessionSummary[]>("/api/search/sessions"),
     staleTime: 30_000,
   });
 }
@@ -23,7 +23,7 @@ function useSearchSessions() {
 function useRunSearch() {
   return useMutation<SearchResult, Error, string>({
     mutationFn: (query: string) =>
-      customFetch<SearchResult>("/search", {
+      customFetch<SearchResult>("/api/search", {
         method: "POST",
         body: JSON.stringify({ query }),
       }),
@@ -33,7 +33,7 @@ function useRunSearch() {
 function useLoadSession() {
   return useMutation<SearchResult, Error, number>({
     mutationFn: (sessionId: number) =>
-      customFetch<SearchResult>(`/search/sessions/${sessionId}`),
+      customFetch<SearchResult>(`/api/search/sessions/${sessionId}`),
   });
 }
 
