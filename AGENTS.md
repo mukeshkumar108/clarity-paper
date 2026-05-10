@@ -205,7 +205,7 @@ Specific things that signal bad output:
 - Document Q&A: upgraded model (gemini-2.5-flash), larger context (20k), voice-aligned prompt (flowing prose, "smart honest friend" register)
 
 **Search — Working:**
-- Multi-source retrieval: Semantic Scholar + OpenAlex + EuropePMC in parallel
+- Multi-source retrieval: Semantic Scholar + OpenAlex + EuropePMC + CORE in parallel
 - Research planner: intent classification, entity extraction, query variant generation
 - Evidence bucket ranking (meta-analysis → RCT → observational → mechanistic → background)
 - Retrieval judge + repair loop (auto-retrigger when quality is weak)

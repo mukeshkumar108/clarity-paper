@@ -219,7 +219,13 @@ export function PaperCard({ paper, index }: PaperCardProps) {
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-stone/70">
             {paper.sources.map((s) => (
               <span key={s}>
-                Source: {s === "semantic_scholar" ? "Semantic Scholar" : s === "openalex" ? "OpenAlex" : "Europe PMC"}
+                Source: {s === "semantic_scholar"
+                  ? "Semantic Scholar"
+                  : s === "openalex"
+                    ? "OpenAlex"
+                    : s === "europe_pmc"
+                      ? "Europe PMC"
+                      : "CORE"}
               </span>
             ))}
           </div>

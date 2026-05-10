@@ -154,6 +154,34 @@ function judgeOnePaper(paper: RankedPaper, plan: ResearchPlan): PaperJudgment {
   };
 }
 
+export function filterTopicallyWeakPapers(
+  papers: RankedPaper[],
+  plan: ResearchPlan,
+): RankedPaper[] {
+  if (papers.length <= 5) return papers;
+
+  const filtered = papers.filter((paper) => {
+    const judgment = judgeOnePaper(paper, plan);
+    const relevance = paper.relevanceScore ?? 0.5;
+
+    if (judgment.isOffTopic && relevance < 0.2) {
+      return false;
+    }
+
+    if (judgment.entityConflationRisk && relevance < 0.2) {
+      return false;
+    }
+
+    if (judgment.hasPopulationMismatch && relevance < 0.16) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return filtered.length >= 5 ? filtered : papers;
+}
+
 // ─── P2: Retrieval quality score ──────────────────────────────────────────────
 
 export function computeRetrievalQualityScore(

@@ -7,13 +7,13 @@ import { rerankByRelevance } from "./reranker";
 import { rankPapers, buildEvidenceSnapshot } from "./ranking";
 import { synthesisePapers } from "./synthesizer";
 import { checkRetractionStatus } from "./openAlexClient";
-import { judgeRetrievalQuality } from "./retrievalJudge";
+import { judgeRetrievalQuality, filterTopicallyWeakPapers } from "./retrievalJudge";
 import { repairRetrieval } from "./queryRepair";
 import { validateGrounding } from "./groundingValidator";
 import { buildEvidenceSpans, computeSpanDiagnostics } from "./evidenceSpans";
 import { enrichWithUnpaywall } from "./unpaywallClient";
 import { logger } from "../logger";
-import type { SearchResult, SearchProgressEvent, RetrievedPaper, RankedPaper, DebugMetadata, PipelineLatency, EvidenceSpan, GroundingDiagnostics } from "./types";
+import type { SearchResult, SearchProgressEvent, RetrievedPaper, RankedPaper, DebugMetadata, PipelineLatency, EvidenceSpan, GroundingDiagnostics, RetrievalSourceCounts } from "./types";
 import type { SynthesisOutput } from "./synthesizer";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -63,6 +63,28 @@ function setQueryCache(query: string, result: CachedResult): void {
 function makeCacheKey(paper: RetrievedPaper): string {
   if (paper.doi) return `doi:${paper.doi.toLowerCase()}`;
   return `${paper.source}:${paper.externalId}`;
+}
+
+function countSources(papers: Array<RetrievedPaper | RankedPaper>): RetrievalSourceCounts {
+  let semanticScholar = 0;
+  let openAlex = 0;
+  let europePmc = 0;
+  let core = 0;
+
+  for (const paper of papers) {
+    if (paper.source === "semantic_scholar") semanticScholar++;
+    else if (paper.source === "openalex") openAlex++;
+    else if (paper.source === "europe_pmc") europePmc++;
+    else if (paper.source === "core") core++;
+  }
+
+  return {
+    semanticScholar,
+    openAlex,
+    europePmc,
+    core,
+    total: papers.length,
+  };
 }
 
 async function hydratePapersFromCache(papers: RetrievedPaper[]): Promise<RetrievedPaper[]> {
@@ -298,6 +320,7 @@ export async function runSearch(
 
   // 3. Hydrate with cache / update cache
   const hydratedPapers = await hydratePapersFromCache(rawPapers);
+  const rawSourceCounts = countSources(hydratedPapers);
 
   // 4. Deduplicate + hard filter
   const t2 = Date.now();
@@ -305,6 +328,7 @@ export async function runSearch(
   const deduplicated = filterGuidelineDocuments(deduplicatedRaw);
   const dedupeMs = Date.now() - t2;
   logger.info({ beforeFilter: deduplicatedRaw.length, afterFilter: deduplicated.length }, "Papers after dedup + guideline filter");
+  const deduplicatedSourceCounts = countSources(deduplicated);
 
   // 4a. Cohere Rerank — semantic relevance scoring + soft filter for off-topic papers.
   // Runs after dedup so we don't waste rerank quota on duplicates. Fault-tolerant:
@@ -313,7 +337,10 @@ export async function runSearch(
 
   // 5. Rank + bucket (evidence quality hierarchy; relevance used as within-bucket tie-breaker)
   const t3 = Date.now();
-  const rankedPapers = rankPapers(rerankedDeduplicated, plan.entities);
+  const rankedPapers = filterTopicallyWeakPapers(
+    rankPapers(rerankedDeduplicated, plan.entities),
+    plan,
+  );
   const rankMs = Date.now() - t3;
 
   // 5a. Retraction freshness check for top-ranked papers
@@ -383,6 +410,12 @@ export async function runSearch(
 
   const snapshot = buildEvidenceSnapshot(finalPapers);
   const noEvidence = finalPapers.length === 0;
+  const finalSourceCounts = countSources(finalPapers);
+
+  logger.info(
+    { raw: rawSourceCounts, deduplicated: deduplicatedSourceCounts, final: finalSourceCounts },
+    "Retrieval source counts",
+  );
 
   // ── Papers ready — emit first streaming event ────────────────────────────
   // Clients receive paper cards immediately while synthesis LLM call runs.
@@ -463,6 +496,11 @@ export async function runSearch(
   const debugMetadata: DebugMetadata = {
     latency,
     retrievalJudgment: judgment,
+    retrievalSourceCounts: {
+      raw: rawSourceCounts,
+      deduplicated: deduplicatedSourceCounts,
+      final: finalSourceCounts,
+    },
     repairTriggered,
     repairStrategy,
     repairQueriesUsed,

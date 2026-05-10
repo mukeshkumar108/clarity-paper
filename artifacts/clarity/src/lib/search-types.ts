@@ -49,7 +49,7 @@ export interface RankedPaper {
   isRetracted: boolean;
   citationCount: number | null;
   openAccessPdfUrl: string | null;
-  source: "semantic_scholar" | "openalex" | "europe_pmc";
+  source: "semantic_scholar" | "openalex" | "europe_pmc" | "core";
   retrievedByQuery: string[];
   sources: string[];
   studyDesign: StudyDesign;

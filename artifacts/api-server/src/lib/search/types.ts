@@ -48,7 +48,7 @@ export interface RetrievedPaper {
   citationCount: number | null;
   citationNormalizedPercentile: number | null;
   openAccessPdfUrl: string | null;
-  source: "semantic_scholar" | "openalex" | "europe_pmc";
+  source: "semantic_scholar" | "openalex" | "europe_pmc" | "core";
   retrievedByQuery: string[];
   sources: string[];
   /** True when a paper was kept despite a short/missing abstract, relying on title+DOI metadata */
@@ -212,9 +212,22 @@ export interface PipelineLatency {
   totalMs: number;
 }
 
+export interface RetrievalSourceCounts {
+  semanticScholar: number;
+  openAlex: number;
+  europePmc: number;
+  core: number;
+  total: number;
+}
+
 export interface DebugMetadata {
   latency: PipelineLatency;
   retrievalJudgment: RetrievalJudgment;
+  retrievalSourceCounts: {
+    raw: RetrievalSourceCounts;
+    deduplicated: RetrievalSourceCounts;
+    final: RetrievalSourceCounts;
+  };
   repairTriggered: boolean;
   repairStrategy: string | null;
   repairQueriesUsed: string[];

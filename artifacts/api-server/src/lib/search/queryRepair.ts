@@ -3,7 +3,7 @@ import { callLLM } from "../openRouterProvider";
 import { retrievePapers } from "./retrieval";
 import { deduplicatePapers, filterGuidelineDocuments } from "./dedupe";
 import { rankPapers } from "./ranking";
-import { computeRetrievalQualityScore } from "./retrievalJudge";
+import { computeRetrievalQualityScore, filterTopicallyWeakPapers } from "./retrievalJudge";
 import { logger } from "../logger";
 import type {
   RankedPaper,
@@ -160,7 +160,10 @@ export async function repairRetrieval(
 
   const rawRepaired = await retrievePapers(repairQueries);
   const dedupedRepaired = filterGuidelineDocuments(deduplicatePapers(rawRepaired));
-  const repaired = rankPapers(dedupedRepaired, plan.entities);
+  const repaired = filterTopicallyWeakPapers(
+    rankPapers(dedupedRepaired, plan.entities),
+    plan,
+  );
 
   // Compare using the new discriminative quality score
   const originalScore = computeRetrievalQualityScore(originalPapers, plan).total;

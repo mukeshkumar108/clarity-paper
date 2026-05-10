@@ -22,7 +22,7 @@ This document tracks fundamental decisions that define the product's identity an
 
 14. **Abstract-only coverage is always disclosed.** `coverageNote: "abstracts_only"` is always returned until full-text retrieval is implemented. The UI shows this explicitly. This is a honesty constraint — users must know we haven't read the full papers.
 
-15. **Three retrieval sources in parallel.** Semantic Scholar, OpenAlex, and EuropePMC are all queried for every search. Dedup by DOI, then fuzzy title match. No single source is trusted exclusively — each has different coverage strengths.
+15. **Four retrieval sources in parallel.** Semantic Scholar, OpenAlex, EuropePMC, and CORE are queried for every search. Dedup by DOI, then fuzzy title match. No single source is trusted exclusively — each has different coverage strengths, and the system should degrade gracefully when one source is unavailable or rate-limited.
 
 16. **Retrieval judge before synthesis.** An LLM judges retrieval quality after every search and triggers a repair loop if the score is weak. This prevents low-quality retrievals from polluting the synthesis. The repair loop re-retrieves with tightened queries; the better result set wins.
 

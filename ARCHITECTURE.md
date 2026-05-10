@@ -16,7 +16,7 @@ The search pipeline is the primary evidence surface. Every step prioritises grou
 ```
 User query
   → ResearchPlanner        (LLM: intent, entities, query variants — Gemini Flash Lite)
-  → retrievePapers         (Semantic Scholar + OpenAlex + EuropePMC — all variants in parallel)
+  → retrievePapers         (Semantic Scholar + OpenAlex + EuropePMC + CORE — all variants in parallel)
   → deduplicatePapers      (DOI + title fuzzy dedup, guideline filtering)
   → rerankByRelevance      (Cohere Rerank 4 Fast: semantic relevance score per paper, soft off-topic filter)
   → enrichWithUnpaywall    (open-access PDF links, runs in parallel with synthesis)
@@ -48,8 +48,9 @@ User query
 | Semantic Scholar | `semanticScholarClient.ts` | Citation counts, study type; optional API key, circuit-breaks on repeated 429s |
 | OpenAlex | `openAlexClient.ts` | Retraction status, citation percentile |
 | EuropePMC | `europePMCClient.ts` | Biomedical depth, especially older literature |
+| CORE | `coreClient.ts` | Open-access paper coverage, download URLs, useful fallback when Semantic Scholar is unavailable |
 
-All three run in parallel. Results are deduped by DOI then title fuzzy match. If Semantic Scholar is rate-limited or unavailable, the pipeline degrades to OpenAlex + EuropePMC rather than failing the search.
+All four run in parallel. Results are deduped by DOI then title fuzzy match. If Semantic Scholar is rate-limited or unavailable, the pipeline degrades to OpenAlex + EuropePMC + CORE rather than failing the search.
 
 ### Evidence Bucket Ranking
 
@@ -95,6 +96,15 @@ The synthesis prompt has four hard rules (see `PROMPTS.md`):
 ### Retrieval Judge & Repair Loop
 
 After initial retrieval, `retrievalJudge.ts` scores quality on 5 dimensions (topical alignment, intervention match, population match, evidence type, off-topic/guideline penalty). If score is weak, `queryRepair.ts` re-retrieves with tightened queries and keeps whichever result set scores higher.
+
+### Retrieval Observability
+
+`DebugMetadata.retrievalSourceCounts` stores source counts at three stages:
+- raw
+- deduplicated
+- final
+
+This makes it possible to see when a search silently degraded to fewer upstream sources or when one source is polluting the candidate pool.
 
 ### Unpaywall Enrichment
 
