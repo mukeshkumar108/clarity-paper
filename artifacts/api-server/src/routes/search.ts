@@ -120,12 +120,21 @@ router.post("/search/analyse-paper", requireAuth, async (req, res): Promise<void
 
     res.status(201).json({ documentId: doc.id });
 
-    // Fire background analysis — do not await, response already sent
+    // Fire background analysis in fast mode — abstracts are short, Gemini Flash
+    // is more than adequate and completes in ~30-60s vs 3-5min for DeepSeek.
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
     const preferredLanguage = user?.preferredLanguage ?? "English";
 
-    analyseDocument(sanitised, "research_paper", "", docGoal, preferredLanguage)
-      .then(async (result) => {
+    void (async () => {
+      try {
+        const result = await analyseDocument(
+          sanitised,
+          "research_paper",
+          "",
+          docGoal,
+          preferredLanguage,
+          { fastMode: true },
+        );
         const stored = packAnalysisForStorage(result);
         await db.insert(documentAnalysisTable).values({
           documentId: doc.id,
@@ -156,11 +165,14 @@ router.post("/search/analyse-paper", requireAuth, async (req, res): Promise<void
           })
           .where(eq(documentsTable.id, doc.id));
         logger.info({ documentId: doc.id }, "Background analysis completed for search result");
-      })
-      .catch(async (err) => {
+      } catch (err) {
         logger.error({ err, documentId: doc.id }, "Background analysis failed for search result");
-        await db.update(documentsTable).set({ status: "failed" }).where(eq(documentsTable.id, doc.id));
-      });
+        await db
+          .update(documentsTable)
+          .set({ status: "failed" })
+          .where(eq(documentsTable.id, doc.id));
+      }
+    })();
   } catch (err) {
     logger.error({ err }, "Failed to create document from search result");
     res.status(500).json({ error: "Failed to create document" });

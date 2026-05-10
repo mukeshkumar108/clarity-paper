@@ -16,6 +16,10 @@ const LEGAL_DISCLAIMER =
 const STRUCTURED_MODEL =
   process.env.OPENROUTER_STRUCTURED_MODEL || process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
 const EDITORIAL_MODEL = process.env.OPENROUTER_EDITORIAL_MODEL || "deepseek/deepseek-v4-pro";
+// Fast model used for short texts (abstracts from search results) where quality/speed
+// trade-off favours speed — Gemini Flash is good enough for 200-word abstracts.
+const FAST_MODEL =
+  process.env.OPENROUTER_FAST_MODEL || "google/gemini-2.5-flash";
 const REVIEW_MODEL = process.env.OPENROUTER_REVIEW_MODEL || EDITORIAL_MODEL;
 const REVIEW_PASS_ENABLED = process.env.CLARITY_ENABLE_REVIEW_PASS === "true";
 
@@ -282,15 +286,21 @@ export async function analyseDocument(
   researchField: string,
   goal: string,
   preferredLanguage: string = "English",
+  options?: { fastMode?: boolean },
 ): Promise<AnalysisResult & { isDemo: boolean }> {
   if (isDemoMode) {
     return { ...DEMO_ANALYSIS, isDemo: true };
   }
 
-  logger.info({ textLength: text.length, structuredModel: STRUCTURED_MODEL }, "Analysing document via single-pass structured extraction");
-  const structured = await runStructuredPass(text, documentType, researchField, goal);
-  const editorial = await runEditorialPass(structured, documentType, researchField, goal, preferredLanguage);
+  const fast = options?.fastMode ?? false;
+  logger.info(
+    { textLength: text.length, structuredModel: STRUCTURED_MODEL, fast },
+    "Analysing document",
+  );
+  const structured = await runStructuredPass(text, documentType, researchField, goal, fast);
+  const editorial = await runEditorialPass(structured, documentType, researchField, goal, preferredLanguage, fast);
   const combined = buildAnalysisFromPasses(structured, editorial, { text, documentType });
+  if (fast) return { ...combined, isDemo: false };
   return reviewFinalAnalysis({ ...combined, isDemo: false }, text, documentType, researchField, goal);
 }
 
@@ -299,6 +309,7 @@ async function runStructuredPass(
   documentType: string,
   researchField: string,
   goal: string,
+  fast = false,
 ): Promise<StructuredAnalysisDraft> {
   const userMessage = `Extract the structured scientific understanding from the following research paper.
 
@@ -321,9 +332,9 @@ Important:
 
   try {
     const raw = await callLLM(STRUCTURED_SYSTEM_PROMPT, userMessage, structuredAnalysisSchema, {
-      model: STRUCTURED_MODEL,
+      model: fast ? FAST_MODEL : STRUCTURED_MODEL,
       temperature: 0.1,
-      timeoutMs: 90_000,
+      timeoutMs: fast ? 45_000 : 90_000,
     });
     return structuredAnalysisSchema.parse(JSON.parse(raw));
   } catch (err) {
@@ -339,6 +350,7 @@ async function runEditorialPass(
   researchField: string,
   goal: string,
   preferredLanguage: string = "English",
+  fast = false,
 ): Promise<EditorialSummaryDraft> {
   const userMessage = buildEditorialContext(structured);
 
@@ -350,9 +362,9 @@ async function runEditorialPass(
 
   try {
     const raw = await callLLM(systemPrompt, userMessage, editorialSummarySchema, {
-      model: EDITORIAL_MODEL,
+      model: fast ? FAST_MODEL : EDITORIAL_MODEL,
       temperature: 0.2,
-      timeoutMs: 180_000,
+      timeoutMs: fast ? 60_000 : 180_000,
     });
     return editorialSummarySchema.parse(JSON.parse(raw));
   } catch (err) {

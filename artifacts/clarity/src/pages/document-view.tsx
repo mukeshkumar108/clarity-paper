@@ -326,9 +326,9 @@ const STOPWORDS = new Set([
 
 const PROGRESS_STAGES = [
   { text: "Reading the paper...", delay: 0 },
-  { text: "Extracting key findings...", delay: 10000 },
+  { text: "Extracting key findings...", delay: 8000 },
   { text: "Crafting your explanation...", delay: 20000 },
-  { text: "Almost ready...", delay: 35000 },
+  { text: "Almost ready...", delay: 40000 },
 ];
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
