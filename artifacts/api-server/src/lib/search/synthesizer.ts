@@ -2,8 +2,11 @@ import { z } from "zod";
 import { callLLM } from "../openRouterProvider";
 import type { RankedPaper, ResearchPlan, EvidenceSnapshot } from "./types";
 
-const EDITORIAL_MODEL =
-  process.env.OPENROUTER_EDITORIAL_MODEL ?? "deepseek/deepseek-v4-pro";
+// Search synthesis is a short 3-4 sentence summary — Gemini Flash is fast and
+// good enough. DeepSeek would be overkill here and causes 60-90s+ timeouts.
+// Use OPENROUTER_SEARCH_MODEL to override in production.
+const SEARCH_MODEL =
+  process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash";
 
 const synthesisOutputSchema = z.object({
   synthesisText: z.string(),
@@ -128,7 +131,7 @@ export async function synthesisePapers(
     SYNTHESIS_SYSTEM_PROMPT,
     userMessage,
     synthesisOutputSchema,
-    { model: EDITORIAL_MODEL, temperature: 0.3 },
+    { model: SEARCH_MODEL, temperature: 0.3, timeoutMs: 45_000 },
   );
 
   const data = typeof raw === "string" ? JSON.parse(raw) : raw;

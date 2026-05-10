@@ -15,9 +15,7 @@ const LEGAL_DISCLAIMER =
   "Clarity Paper provides research explanation and analysis, not medical or professional advice. Always consult a qualified professional before making health or lifestyle changes based on research.";
 const STRUCTURED_MODEL =
   process.env.OPENROUTER_STRUCTURED_MODEL || process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
-const EDITORIAL_MODEL = process.env.OPENROUTER_EDITORIAL_MODEL || "deepseek/deepseek-v4-pro";
-// Fast model used for short texts (abstracts from search results) where quality/speed
-// trade-off favours speed — Gemini Flash is good enough for 200-word abstracts.
+const EDITORIAL_MODEL = process.env.OPENROUTER_EDITORIAL_MODEL || "google/gemini-2.5-flash";
 const FAST_MODEL =
   process.env.OPENROUTER_FAST_MODEL || "google/gemini-2.5-flash";
 const REVIEW_MODEL = process.env.OPENROUTER_REVIEW_MODEL || EDITORIAL_MODEL;

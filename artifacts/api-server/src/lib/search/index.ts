@@ -1,5 +1,5 @@
 import { db, searchSessionsTable, paperCacheTable } from "@workspace/db";
-import { eq, and, asc, inArray } from "drizzle-orm";
+import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { planResearch } from "./researchPlanner";
 import { retrievePapers } from "./retrieval";
 import { deduplicatePapers, filterGuidelineDocuments } from "./dedupe";
@@ -25,36 +25,45 @@ function makeCacheKey(paper: RetrievedPaper): string {
 }
 
 async function hydratePapersFromCache(papers: RetrievedPaper[]): Promise<RetrievedPaper[]> {
-  const staleThreshold = new Date(Date.now() - CACHE_TTL_MS);
+  if (papers.length === 0) return papers;
 
-  const result: RetrievedPaper[] = [];
-  for (const paper of papers) {
-    const key = makeCacheKey(paper);
+  try {
+    const staleThreshold = new Date(Date.now() - CACHE_TTL_MS);
+    const keys = papers.map(makeCacheKey);
 
-    const [cached] = await db
+    // Batch fetch all cached rows in a single query
+    const cachedRows = await db
       .select()
       .from(paperCacheTable)
-      .where(eq(paperCacheTable.cacheKey, key));
+      .where(inArray(paperCacheTable.cacheKey, keys));
 
-    if (cached && cached.cachedAt > staleThreshold) {
-      result.push({
-        ...paper,
-        isRetracted: cached.isRetracted,
-        citationNormalizedPercentile:
-          cached.citationNormalizedPercentile ?? paper.citationNormalizedPercentile,
-        openAccessPdfUrl: cached.openAccessPdfUrl ?? paper.openAccessPdfUrl,
-      });
-    } else {
-      await db
-        .insert(paperCacheTable)
-        .values({
+    const cacheMap = new Map(cachedRows.map((r) => [r.cacheKey, r]));
+
+    const result: RetrievedPaper[] = [];
+    const upserts: typeof paperCacheTable.$inferInsert[] = [];
+
+    for (const paper of papers) {
+      const key = makeCacheKey(paper);
+      const cached = cacheMap.get(key);
+
+      if (cached && cached.cachedAt > staleThreshold) {
+        result.push({
+          ...paper,
+          isRetracted: cached.isRetracted,
+          citationNormalizedPercentile:
+            cached.citationNormalizedPercentile ?? paper.citationNormalizedPercentile,
+          openAccessPdfUrl: cached.openAccessPdfUrl ?? paper.openAccessPdfUrl,
+        });
+      } else {
+        result.push(paper);
+        upserts.push({
           cacheKey: key,
           doi: paper.doi,
           externalId: paper.externalId,
           source: paper.source,
           title: paper.title,
           abstract: paper.abstract,
-          authors: paper.authors,
+          authors: paper.authors as any,
           year: paper.year,
           studyType: paper.studyType,
           isRetracted: paper.isRetracted,
@@ -62,22 +71,33 @@ async function hydratePapersFromCache(papers: RetrievedPaper[]): Promise<Retriev
           citationNormalizedPercentile: paper.citationNormalizedPercentile,
           openAccessPdfUrl: paper.openAccessPdfUrl,
           cachedAt: new Date(),
-        })
+        });
+      }
+    }
+
+    // Batch upsert stale/missing rows (fire-and-forget — don't block search)
+    if (upserts.length > 0) {
+      db.insert(paperCacheTable)
+        .values(upserts)
         .onConflictDoUpdate({
           target: paperCacheTable.cacheKey,
           set: {
-            isRetracted: paper.isRetracted,
-            citationCount: paper.citationCount,
-            citationNormalizedPercentile: paper.citationNormalizedPercentile,
-            openAccessPdfUrl: paper.openAccessPdfUrl,
-            cachedAt: new Date(),
+            isRetracted: sql`excluded.is_retracted`,
+            citationCount: sql`excluded.citation_count`,
+            citationNormalizedPercentile: sql`excluded.citation_normalized_percentile`,
+            openAccessPdfUrl: sql`excluded.open_access_pdf_url`,
+            cachedAt: sql`excluded.cached_at`,
           },
-        });
-
-      result.push(paper);
+        })
+        .catch((err) => logger.warn({ err }, "Paper cache upsert failed — non-fatal"));
     }
+
+    return result;
+  } catch (err) {
+    // If paper_cache table doesn't exist or any DB error — skip caching, return papers as-is
+    logger.warn({ err }, "Paper cache unavailable — skipping cache layer");
+    return papers;
   }
-  return result;
 }
 
 function applySummariesToPapers(
@@ -362,30 +382,35 @@ export async function runSearch(
 
   logger.info({ totalMs, quality: judgment.quality, repairTriggered }, "Search pipeline complete");
 
-  // 10. Persist session
-  const [session] = await db
-    .insert(searchSessionsTable)
-    .values({
-      userId,
-      query,
-      plannerOutput: plan as any,
-      papers: papersWithSummaries as any,
-      synthesisText: synthesis.synthesisText,
-      confidence: synthesis.confidence,
-      evidenceSnapshot: snapshot as any,
-      followUpOptions: synthesis.followUpOptions as any,
-    })
-    .returning();
+  // 10. Persist session (non-fatal — search results still returned if DB unavailable)
+  let sessionId: number | null = null;
+  try {
+    const [session] = await db
+      .insert(searchSessionsTable)
+      .values({
+        userId,
+        query,
+        plannerOutput: plan as any,
+        papers: papersWithSummaries as any,
+        synthesisText: synthesis.synthesisText,
+        confidence: synthesis.confidence,
+        evidenceSnapshot: snapshot as any,
+        followUpOptions: synthesis.followUpOptions as any,
+      })
+      .returning();
+    sessionId = session.id;
+    logger.info({ sessionId: session.id }, "Search session saved");
 
-  logger.info({ sessionId: session.id }, "Search session saved");
-
-  // 11. Prune to 50 most recent sessions for this user (fire-and-forget)
-  pruneOldSessions(userId).catch((err) =>
-    logger.warn({ err, userId }, "Session pruning failed"),
-  );
+    // 11. Prune to 50 most recent sessions for this user (fire-and-forget)
+    pruneOldSessions(userId).catch((err) =>
+      logger.warn({ err, userId }, "Session pruning failed"),
+    );
+  } catch (err) {
+    logger.warn({ err }, "Failed to persist search session — returning results anyway");
+  }
 
   return {
-    sessionId: session.id,
+    sessionId: sessionId ?? 0,
     query,
     plan,
     synthesisText: synthesis.synthesisText,
