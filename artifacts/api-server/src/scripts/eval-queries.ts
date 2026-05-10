@@ -14,6 +14,12 @@ export const EVAL_QUERIES: EvalQuery[] = [
     notes: "Canonical test case. Should find RCTs and meta-analyses.",
   },
   {
+    id: "supp-01b",
+    query: "does creatine actually help with brain health and how?",
+    category: "supplements",
+    notes: "Natural-language version of the canonical creatine test. Should not drift into unrelated disease papers.",
+  },
+  {
     id: "supp-02",
     query: "is magnesium glycinate useful for sleep?",
     category: "supplements",
@@ -148,6 +154,12 @@ export const EVAL_QUERIES: EvalQuery[] = [
     query: "is cold exposure and ice baths real or hype?",
     category: "fitness",
     notes: "Claim-check. Some evidence for performance recovery, inflammation mixed.",
+  },
+  {
+    id: "fit-01b",
+    query: "is cold exposure real or hype?",
+    category: "fitness",
+    notes: "Short natural-language query. Should stay on cold exposure rather than drifting into unrelated recovery or noise papers.",
   },
   {
     id: "fit-02",
