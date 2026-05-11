@@ -408,17 +408,17 @@ async function runEditorialPass(
     {
       label: "primary",
       model: fast ? FAST_EDITORIAL_MODEL : EDITORIAL_MODEL,
-      timeoutMs: fast ? 90_000 : 180_000,
+      timeoutMs: fast ? 60_000 : 60_000,
     },
     {
       label: "retry",
       model: fast ? FAST_EDITORIAL_MODEL : EDITORIAL_MODEL,
-      timeoutMs: fast ? 90_000 : 180_000,
+      timeoutMs: fast ? 60_000 : 60_000,
     },
     {
       label: "backup",
       model: fast ? EDITORIAL_BACKUP_MODEL : EDITORIAL_BACKUP_MODEL,
-      timeoutMs: fast ? 120_000 : 210_000,
+      timeoutMs: fast ? 75_000 : 75_000,
     },
   ] as const;
 

@@ -66,6 +66,7 @@ export default function DocumentNew() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [fileVisible, setFileVisible] = useState(false);
   const [titleLoading, setTitleLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const typewrittenTitle = useTypewriter(titleTarget, 38);
@@ -80,7 +81,7 @@ export default function DocumentNew() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  const isPending = createDocMutation.isPending || analyseDocMutation.isPending;
+  const isPending = createDocMutation.isPending || analyseDocMutation.isPending || uploading;
 
   const handlePasteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,8 +116,9 @@ export default function DocumentNew() {
 
   const handleFileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file) return;
+    if (!file || isPending) return;
 
+    setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
     formData.append("title", title || file.name);
@@ -134,6 +136,7 @@ export default function DocumentNew() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: "Upload failed" })) as { error?: string };
         toast({ title: "Upload failed", description: err.error ?? "Something went wrong.", variant: "destructive" });
+        setUploading(false);
         return;
       }
 
@@ -142,11 +145,12 @@ export default function DocumentNew() {
       analyseDocMutation.mutate(
         { id: doc.id },
         {
-          onSuccess: () => setLocation(`/documents/${doc.id}`),
-          onError: () => setLocation(`/documents/${doc.id}`),
+          onSuccess: () => { setUploading(false); setLocation(`/documents/${doc.id}`); },
+          onError: () => { setUploading(false); setLocation(`/documents/${doc.id}`); },
         },
       );
     } catch {
+      setUploading(false);
       toast({ title: "Upload failed", description: "Network error.", variant: "destructive" });
     }
   };
@@ -396,7 +400,10 @@ export default function DocumentNew() {
                   className="w-full bg-onyx-outline border-onyx-outline hover:bg-onyx-outline/92 group"
                 >
                   {isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {uploading ? "Uploading file…" : "Starting analysis…"}
+                    </>
                   ) : (
                     <>
                       Analyze paper <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
@@ -404,7 +411,7 @@ export default function DocumentNew() {
                   )}
                 </Button>
                 <p className="text-[11px] text-center text-muted-stone mt-4 uppercase tracking-[0.14em]">
-                  Analysis takes ~45 seconds
+                  Analysis usually takes 30–90 seconds
                 </p>
               </div>
             </div>

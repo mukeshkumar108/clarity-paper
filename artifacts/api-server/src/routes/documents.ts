@@ -230,6 +230,11 @@ router.post("/documents/:id/analyse", requireAuth, async (req, res): Promise<voi
     return;
   }
 
+  if (doc.status === "analysing") {
+    res.json({ status: "analysing", documentId: id, alreadyRunning: true });
+    return;
+  }
+
   // Check if already analysed. During active product iteration we always
   // regenerate so existing studies pick up the latest pipeline changes.
   stepStart = Date.now();
@@ -314,6 +319,8 @@ router.post("/documents/:id/analyse", requireAuth, async (req, res): Promise<voi
       logger.info({
         documentId: id,
         userId: user.id,
+        reviewPassEnabled: !!process.env.CLARITY_ENABLE_REVIEW_PASS,
+        editorialModel: process.env.OPENROUTER_EDITORIAL_MODEL || "google/gemini-2.5-flash",
         timings: {
           dbFetchUserMs,
           dbFetchDocumentMs,

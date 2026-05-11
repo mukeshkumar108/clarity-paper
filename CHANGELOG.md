@@ -4,6 +4,24 @@ All notable product and engineering changes should be tracked here.
 
 ## 2026-05-11
 
+### Document Analysis — Upload/Analyse Reliability
+- fixed duplicate upload submissions: `document-new.tsx` now tracks `uploading` state and disables the submit button during file upload + analysis trigger
+- fixed duplicate analyse submissions: backend `/documents/:id/analyse` now returns early with `{ alreadyRunning: true }` if the document status is already `analysing`
+- fixed unguarded "Start analysis" button in `document-view.tsx` — now properly disabled during mutation
+- replaced misleading "Almost ready..." progress stage with honest "Writing the trust section..."
+- updated progress copy from "~45 seconds" to "30–90 seconds"
+- added stage-aware button text: "Uploading file…" / "Starting analysis…" during pending state
+- clear error toast on upload failure with `setUploading(false)` to unlock the form
+
+### Document Analysis — Latency Fixes
+- tightened Pass 2 editorial attempt timeouts from 180s/90s to 60s per attempt, 75s for backup
+- this prevents a single hung primary attempt from blocking for ~180s before retry
+- worst case total for all 3 attempts drops from ~570s to ~195s
+- fixed `.env.example` editorial model from `deepseek/deepseek-v4-pro` to `google/gemini-2.5-flash` (matching production docs)
+- fixed `.env.example` `CLARITY_ENABLE_REVIEW_PASS` from `true` to `false` (review pass adds ~45s and is not intended for production)
+- fixed README production env vars to match documented editorial model and disabled review pass
+- added `reviewPassEnabled` and `editorialModel` to timing log output for quick production diagnosis
+
 ### Document Analysis — Observability
 - added per-pass timing instrumentation to the document analysis pipeline
 - exported `DocumentAnalysisTimings` interface from `documentAnalysisService.ts`

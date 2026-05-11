@@ -209,6 +209,8 @@ Specific things that signal bad output:
 - Click-claim-to-source highlighting in the document workspace
 - Document Q&A: upgraded model (gemini-2.5-flash), larger context (20k), voice-aligned prompt (flowing prose, "smart honest friend" register), no `[doc]` / `[general]` labels
 - Per-pass timing instrumentation on document analysis pipeline (Pass 1 LLM + parse, Pass 2 context build + attempts + parse, assembly, optional review pass, route-level DB reads/writes, total background duration)
+- Upload/analyse duplicate-submission guards (frontend uploading state, backend already-analysing early return, disabled buttons during mutation)
+- Pass 2 editorial attempt timeouts tightened to 60s per attempt (was 180s), 75s for backup (was 210s)
 
 **Search — Working:**
 - Multi-source retrieval: Semantic Scholar + OpenAlex + EuropePMC + CORE in parallel

@@ -300,7 +300,7 @@ const PROGRESS_STAGES = [
   { text: "Reading the paper...", delay: 0 },
   { text: "Extracting key findings...", delay: 8000 },
   { text: "Crafting your explanation...", delay: 20000 },
-  { text: "Almost ready...", delay: 40000 },
+  { text: "Writing the trust section...", delay: 40000 },
 ];
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
@@ -899,7 +899,8 @@ export default function DocumentView({ id }: { id: string }) {
           <p className="text-muted-stone max-w-md mb-8 leading-[1.7] text-[15px]">
             Your paper has been uploaded. Start the analysis to get a plain-English explanation.
           </p>
-          <Button className="bg-onyx-outline border-onyx-outline hover:bg-onyx-outline/92" onClick={handleAnalyse}>
+          <Button className="bg-onyx-outline border-onyx-outline hover:bg-onyx-outline/92" onClick={handleAnalyse} disabled={analyseDocMutation.isPending}>
+            {analyseDocMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             Start analysis
           </Button>
         </div>

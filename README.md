@@ -94,9 +94,9 @@ Set these backend variables:
 - `CORS_ORIGIN=https://YOUR-VERCEL-FRONTEND.vercel.app`
 - `OPENROUTER_API_KEY=...`
 - `OPENROUTER_STRUCTURED_MODEL=google/gemini-2.5-flash`
-- `OPENROUTER_EDITORIAL_MODEL=deepseek/deepseek-v4-pro`
-- `OPENROUTER_REVIEW_MODEL=deepseek/deepseek-v4-pro`
-- `CLARITY_ENABLE_REVIEW_PASS=true`
+- `OPENROUTER_EDITORIAL_MODEL=google/gemini-2.5-flash`
+- `OPENROUTER_EDITORIAL_BACKUP_MODEL=anthropic/claude-3.5-haiku`
+- `CLARITY_ENABLE_REVIEW_PASS=false`
 
 After first deploy, run:
 
