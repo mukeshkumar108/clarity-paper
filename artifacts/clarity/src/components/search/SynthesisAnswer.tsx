@@ -53,7 +53,7 @@ export function SynthesisAnswer({
       {/* Section label — makes clear this is an orientation, not a verdict */}
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone/60">
-          What the evidence suggests
+          First read
         </span>
       </div>
 
@@ -61,7 +61,7 @@ export function SynthesisAnswer({
         <div className="flex items-start gap-3 rounded-xl border border-goldenrod-accent/30 bg-goldenrod-accent/5 px-4 py-3">
           <AlertTriangle className="w-4 h-4 text-goldenrod-accent mt-0.5 shrink-0" />
           <p className="text-[13px] text-goldenrod-accent leading-relaxed">
-            We searched broadly and found limited strong human evidence for this specific question.
+            We found only limited strong human evidence on this exact question, so this readout is more exploratory than settled.
           </p>
         </div>
       )}
@@ -87,7 +87,7 @@ export function SynthesisAnswer({
         {coverageNote === "abstracts_only" && (
           <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-stone/70">
             <FileText className="w-3 h-3" />
-            <span>Based on paper abstracts · full texts not reviewed</span>
+            <span>Based on paper abstracts · full texts not reviewed yet</span>
           </div>
         )}
       </div>

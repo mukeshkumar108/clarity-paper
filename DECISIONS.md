@@ -12,7 +12,7 @@ This document tracks fundamental decisions that define the product's identity an
 
 ## Search & Evidence Decisions
 
-10. **Papers are the authority, not the AI.** Synthesis text is a navigation aid — it helps users orient themselves in the evidence. It is not a verdict. Evidence panel (claims + snippets) leads the UI; synthesis follows. The UX model is Wikipedia-style provenance, not ChatGPT-style answer.
+10. **Papers are the authority, not the AI.** Synthesis text is a navigation aid — it helps users orient themselves in the evidence. It is not a verdict. The search surface should open with a warm first read and paper pathways, while provenance remains inspectable and visibly grounded underneath. The UX model is guided scientific exploration, not a floating answer and not a dry audit report.
 
 11. **Evidence span grounding by construction, not by LLM.** Every snippet shown in the EvidencePanel is a verbatim substring of its source abstract. The matching is CPU-only (bigram + entity weighting + negation detection). No LLM is asked to validate whether a snippet supports a claim — this eliminates one class of hallucination entirely.
 

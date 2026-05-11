@@ -223,7 +223,11 @@ Specific things that signal bad output:
 - Coverage note: `abstracts_only` always returned and shown in UI
 - Unpaywall enrichment (open-access PDF links, parallel with synthesis)
 - EvidencePanel UI: expandable claim rows with verbatim snippets + DOI links
-- Evidence-first UX ordering in SearchResults
+- SearchResults reshaped around first read → paper pathways → follow-up questions → subordinate evidence/provenance
+- Curated-transparency copy in SearchResults: positioned as a useful starting set, not an exhaustive literature review
+- Paper pathways grouping in SearchResults using existing metadata only:
+  `Where I'd start / Useful background / Early or adjacent / Where the story gets messy`
+- Paper cards reframed as invitations into the explainer flow rather than database rows
 
 **Not yet implemented:**
 - Full-text retrieval (always `abstracts_only` for now)
@@ -253,7 +257,8 @@ Specific things that signal bad output:
 - The grounding safety invariant: snippets must be verbatim substrings of their source abstract
 - The support taxonomy thresholds (0.42 / 0.22) — do not adjust without re-running evals
 - The synthesis causal language constraints in the synthesizer prompt
-- The evidence-first UX ordering (EvidenceSnapshot → Synthesis → EvidencePanel → Papers)
+- The search UX should preserve the current comprehension-first ordering:
+  `First read → paper pathways → follow-up refinement → subordinate provenance`
 - The `coverageNote` field on `SearchResult` — always set it; never omit or hardcode as covered
 - The retrieval judge + repair loop — do not remove even if it adds latency; quality is the tradeoff
 

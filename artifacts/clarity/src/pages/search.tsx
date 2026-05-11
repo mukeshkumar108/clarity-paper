@@ -131,13 +131,12 @@ export default function Search() {
               <Microscope className="w-5 h-5 text-onyx-outline" />
             </div>
             <h1 className="text-[30px] font-semibold tracking-tight text-deep-shadow leading-none">
-              Research Search
+              Ask a research question
             </h1>
           </div>
           <p className="text-[15px] text-muted-stone max-w-[60ch] leading-relaxed">
-            Start with the messy version of the question. We pull the most
-            relevant papers, tell you the real story in plain English, and let
-            you inspect the evidence yourself.
+            Start with the messy version. Clarity gives you a warm first read of
+            the evidence, then points you toward the papers most worth opening.
           </p>
         </header>
 

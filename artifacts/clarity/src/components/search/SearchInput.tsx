@@ -4,10 +4,10 @@ import { Search, Loader2, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const EXAMPLE_QUERIES = [
-  "does creatine actually help the brain?",
-  "what does science say about fasting?",
-  "is magnesium glycinate useful for sleep?",
-  "is cold exposure real or hype?",
+  "does creatine help with sleep deprivation?",
+  "what does the evidence say about magnesium and sleep?",
+  "is cold exposure useful or mostly hype?",
+  "what do we actually know about fasting and cognition?",
   "tell me about meditation and anxiety",
 ];
 
@@ -65,7 +65,7 @@ export function SearchInput({ onSearch, isLoading, initialQuery }: SearchInputPr
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask anything about health research — or paste a claim you've seen online…"
+              placeholder="Try a question, a claim you saw online, or a topic you want to understand..."
               disabled={isLoading}
               rows={2}
               className="flex-1 resize-none bg-transparent text-[16px] text-deep-shadow placeholder:text-muted-stone/60 focus:outline-none leading-relaxed disabled:opacity-60"
@@ -73,7 +73,7 @@ export function SearchInput({ onSearch, isLoading, initialQuery }: SearchInputPr
           </div>
           <div className="flex items-center justify-between px-4 pb-3 pt-1 border-t border-pebble-gray/50">
             <span className="text-[12px] text-muted-stone/70">
-              Press Enter to search, Shift+Enter for new line
+              Press Enter to explore, Shift+Enter for a new line
             </span>
             <Button
               type="submit"
@@ -88,7 +88,7 @@ export function SearchInput({ onSearch, isLoading, initialQuery }: SearchInputPr
                 </>
               ) : (
                 <>
-                  Search
+                  Start exploring
                   <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}

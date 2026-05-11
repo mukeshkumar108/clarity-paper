@@ -11,9 +11,14 @@ export function FollowUpOptions({ options, onSelect }: FollowUpOptionsProps) {
 
   return (
     <div className="space-y-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone">
-        Want to go deeper?
-      </p>
+      <div className="space-y-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone">
+          Where to go next
+        </p>
+        <p className="text-[13px] text-muted-stone leading-relaxed">
+          You could take this in a few directions.
+        </p>
+      </div>
       <div className="space-y-2">
         {options.map((option) => (
           <button

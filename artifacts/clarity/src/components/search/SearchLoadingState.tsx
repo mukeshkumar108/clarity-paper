@@ -2,11 +2,26 @@ import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 
 const STAGES = [
-  { label: "Planning search", detail: "Identifying key concepts and query variants", durationMs: 2500 },
-  { label: "Finding papers", detail: "Querying Semantic Scholar and OpenAlex", durationMs: 4000 },
-  { label: "Removing duplicates", detail: "Merging results across sources", durationMs: 1500 },
-  { label: "Ranking evidence", detail: "Scoring by study design and recency", durationMs: 1500 },
-  { label: "Writing synthesis", detail: "Summarising what the evidence shows", durationMs: 99999 },
+  {
+    label: "Understanding your question",
+    detail: "Figuring out what you are really asking, and which angles matter most.",
+    durationMs: 2500,
+  },
+  {
+    label: "Finding the most relevant papers",
+    detail: "Starting with direct human evidence, then widening only if needed.",
+    durationMs: 4000,
+  },
+  {
+    label: "Picking the best places to start",
+    detail: "Looking for papers that seem most useful for getting oriented quickly.",
+    durationMs: 1500,
+  },
+  {
+    label: "Writing your first read",
+    detail: "Pulling the story together in plain English while keeping the papers underneath.",
+    durationMs: 99999,
+  },
 ];
 
 export function SearchLoadingState() {

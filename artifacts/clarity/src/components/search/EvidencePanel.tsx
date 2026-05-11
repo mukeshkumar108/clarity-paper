@@ -156,11 +156,11 @@ export function EvidencePanel({ spans }: EvidencePanelProps) {
       {/* Section header */}
       <div className="flex items-center gap-3">
         <h3 className="text-[13px] font-semibold uppercase tracking-[0.18em] text-muted-stone">
-          Claim Provenance
+          See the evidence behind this
         </h3>
         <div className="flex-1 h-px bg-pebble-gray" />
         <span className="text-[11px] text-muted-stone/60">
-          Tap any claim to see source passages
+          Open any claim to inspect the abstract passages underneath it
         </span>
       </div>
 
@@ -172,7 +172,7 @@ export function EvidencePanel({ spans }: EvidencePanelProps) {
       </div>
 
       <p className="text-[11px] text-muted-stone/50 pt-1">
-        Passages are extracted verbatim from paper abstracts. Support classification is based on keyword alignment — verify with the full paper for authoritative interpretation.
+        These passages are quoted verbatim from paper abstracts. They are here to keep the first read inspectable, not to replace reading the paper itself.
       </p>
     </div>
   );

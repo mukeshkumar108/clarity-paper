@@ -60,9 +60,32 @@ const POPULATION_LABELS: Record<PopulationType, string> = {
 interface PaperCardProps {
   paper: RankedPaper;
   index: number;
+  displayGroup: "start" | "background" | "early" | "messy";
 }
 
-export function PaperCard({ paper, index }: PaperCardProps) {
+const GROUP_INTRO: Record<
+  PaperCardProps["displayGroup"],
+  { eyebrow: string; whyItMatters: string }
+> = {
+  start: {
+    eyebrow: "Good place to start",
+    whyItMatters: "This looks like one of the clearest papers to open first if you want the main signal quickly.",
+  },
+  background: {
+    eyebrow: "Helpful context",
+    whyItMatters: "This adds useful context once you have the basic shape of the evidence in view.",
+  },
+  early: {
+    eyebrow: "Early or side-path signal",
+    whyItMatters: "This is better for plausibility, mechanism, or adjacent angles than for a clean first answer.",
+  },
+  messy: {
+    eyebrow: "Worth opening for the tension",
+    whyItMatters: "This is where the story gets less tidy, which often makes it one of the more interesting papers to inspect.",
+  },
+};
+
+export function PaperCard({ paper, index, displayGroup }: PaperCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [analysing, setAnalysing] = useState(false);
   const [, navigate] = useLocation();
@@ -71,6 +94,7 @@ export function PaperCard({ paper, index }: PaperCardProps) {
   const bucketConfig = BUCKET_CONFIG[paper.evidenceBucket];
   const designLabel = DESIGN_LABELS[paper.studyDesign];
   const popLabel = POPULATION_LABELS[paper.populationType];
+  const intro = GROUP_INTRO[displayGroup];
 
   const authorDisplay =
     paper.authors.length > 0
@@ -110,13 +134,18 @@ export function PaperCard({ paper, index }: PaperCardProps) {
       <div className="p-5">
         {/* Header row */}
         <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[11px] font-medium text-muted-stone/60 w-5">
-              {index + 1}
-            </span>
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] font-medium text-muted-stone/60 w-5">
+                {index + 1}
+              </span>
+              <span className="text-[11px] font-medium text-muted-stone">
+                {intro.eyebrow}
+              </span>
+            </div>
             <span
               className={cn(
-                "text-[10px] font-semibold uppercase tracking-[0.14em] px-2 py-0.5 rounded border",
+                "inline-flex text-[10px] font-semibold uppercase tracking-[0.14em] px-2 py-0.5 rounded border w-fit",
                 bucketConfig.classes,
               )}
             >
@@ -147,23 +176,14 @@ export function PaperCard({ paper, index }: PaperCardProps) {
           </p>
         )}
 
+        <p className="text-[13px] text-muted-stone leading-relaxed mb-2">
+          {intro.whyItMatters}
+        </p>
+
         {/* Plain summary */}
         <p className="text-[14px] text-inkwell/80 leading-relaxed mb-4">
           {paper.plainSummary}
         </p>
-
-        {/* Source trace */}
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {paper.retrievedByQuery.slice(0, 2).map((q) => (
-            <span
-              key={q}
-              className="text-[10px] text-muted-stone/70 bg-pebble-gray/40 border border-pebble-gray/60 rounded px-2 py-0.5"
-              title="Search query that found this paper"
-            >
-              {q}
-            </span>
-          ))}
-        </div>
 
         {/* Action row */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -204,7 +224,7 @@ export function PaperCard({ paper, index }: PaperCardProps) {
               className="text-[12px] text-muted-stone hover:text-deep-shadow flex items-center gap-1 transition-colors px-2 py-1.5"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              View paper
+              View source
             </a>
           )}
         </div>
@@ -213,7 +233,10 @@ export function PaperCard({ paper, index }: PaperCardProps) {
       {/* Expanded abstract */}
       {expanded && (
         <div className="px-5 pb-5 pt-0 border-t border-pebble-gray/60 mt-1">
-          <p className="text-[13px] text-deep-shadow/80 leading-[1.75] mt-4 font-mono">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone pt-4">
+            Abstract
+          </p>
+          <p className="text-[13px] text-deep-shadow/80 leading-[1.75] mt-3">
             {paper.abstract}
           </p>
           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-muted-stone/70">

@@ -36,9 +36,14 @@ function BucketRow({ label, count, description, colorClass }: BucketRowProps) {
 export function EvidenceSnapshot({ snapshot }: EvidenceSnapshotProps) {
   return (
     <div className="rounded-xl border border-pebble-gray bg-white/60 p-4 space-y-1">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone mb-3">
-        Evidence retrieved
-      </p>
+      <div className="mb-3 space-y-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone">
+          What kind of evidence we found
+        </p>
+        <p className="text-[12px] text-muted-stone leading-relaxed">
+          This is a curated starting set, chosen to help you get oriented quickly rather than sweep the whole literature.
+        </p>
+      </div>
 
       <BucketRow
         label="Meta-analyses & systematic reviews"
@@ -73,7 +78,7 @@ export function EvidenceSnapshot({ snapshot }: EvidenceSnapshotProps) {
 
       <div className="pt-3 border-t border-pebble-gray/60 mt-2">
         <p className="text-[12px] text-muted-stone">
-          {snapshot.totalPapers} paper{snapshot.totalPapers !== 1 ? "s" : ""} reviewed
+          {snapshot.totalPapers} paper{snapshot.totalPapers !== 1 ? "s" : ""} to start with
         </p>
       </div>
     </div>

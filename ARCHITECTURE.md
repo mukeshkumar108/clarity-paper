@@ -138,13 +138,13 @@ This makes it possible to see when a search silently degraded to fewer upstream 
 
 | Component | Role |
 |-----------|------|
-| `EvidenceSnapshot` | Leads the results page — counts by bucket, overall confidence |
-| `SynthesisAnswer` | "What the evidence suggests" — synthesis text, confidence badge, coverage note |
-| `EvidencePanel` | Claim-level provenance — expandable rows with verbatim abstract snippets |
-| `PaperCard` | Individual paper with evidence bucket, study design, plain summary |
-| `FollowUpOptions` | Suggested follow-up queries from the research plan |
+| `SynthesisAnswer` | "First read" — synthesis text, confidence badge, coverage note |
+| `FollowUpOptions` | Suggested conversational next-step queries shown directly under the first read |
+| `PaperCard` | Individual paper introduced as a pathway into understanding and into the explainer flow |
+| `EvidenceSnapshot` | Secondary evidence-shape summary: what kind of evidence was found in the curated starting set |
+| `EvidencePanel` | Subordinate claim-level provenance — expandable rows with verbatim abstract snippets |
 
-**Order in `SearchResults.tsx`:** EvidenceSnapshot → SynthesisAnswer → EvidencePanel → Paper cards → FollowUpOptions. Evidence leads; AI synthesis follows.
+**Order in `SearchResults.tsx`:** SynthesisAnswer → FollowUpOptions → grouped Paper cards → EvidenceSnapshot → collapsed EvidencePanel. The search surface now opens with orientation and paper pathways, while keeping evidence grounding visibly available but visually subordinate.
 
 ---
 
