@@ -28,6 +28,7 @@ const FAST_EDITORIAL_MODEL =
   "anthropic/claude-3.5-haiku";
 const REVIEW_MODEL = process.env.OPENROUTER_REVIEW_MODEL || EDITORIAL_MODEL;
 const REVIEW_PASS_ENABLED = process.env.CLARITY_ENABLE_REVIEW_PASS === "true";
+const REVIEW_PASS_TIMEOUT_MS = 30_000;
 
 class EditorialSynthesisFailedError extends Error {
   constructor(message = "EDITORIAL_SYNTHESIS_FAILED") {
@@ -474,6 +475,8 @@ async function reviewFinalAnalysis(
     return draft;
   }
 
+  logger.warn("Review pass is ENABLED — this adds latency and is not recommended for production");
+
   const reviewSystemPrompt = `You are Clarity Paper's editorial review pass. Improve the human-facing explanation without changing the underlying scientific meaning.
 
 Rules:
@@ -513,6 +516,7 @@ Improve the draft so it is clearer, more coherent, and more useful to a non-expe
     const raw = await callLLM(reviewSystemPrompt, reviewMessage, editorialSummarySchema, {
       model: REVIEW_MODEL,
       temperature: 0.1,
+      timeoutMs: REVIEW_PASS_TIMEOUT_MS,
     });
     if (timings) timings.reviewPassLlmMs = Date.now() - reviewLlmStart;
 
