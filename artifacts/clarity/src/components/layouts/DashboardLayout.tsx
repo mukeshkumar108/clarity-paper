@@ -54,11 +54,20 @@ export function DashboardLayout({ children, immersive = false }: DashboardLayout
                 <Link key={item.href} href={item.href}>
                   <div className={cn(
                     "studio-sidebar-item cursor-pointer whitespace-nowrap border",
-                    location === item.href 
+                    (item.href === "/search"
+                      ? location === "/search" || location.startsWith("/search/")
+                      : location === item.href)
                       ? "border-pebble-gray bg-white text-inkwell shadow-subtle" 
                       : "border-transparent text-muted-stone hover:border-pebble-gray/70 hover:bg-white/75 hover:text-inkwell"
                   )}>
-                    <item.icon className={cn("w-4 h-4 shrink-0", location === item.href ? "text-onyx-outline" : "text-muted-stone/70")} />
+                    <item.icon className={cn(
+                      "w-4 h-4 shrink-0",
+                      (item.href === "/search"
+                        ? location === "/search" || location.startsWith("/search/")
+                        : location === item.href)
+                        ? "text-onyx-outline"
+                        : "text-muted-stone/70",
+                    )} />
                     <span>{item.label}</span>
                   </div>
                 </Link>

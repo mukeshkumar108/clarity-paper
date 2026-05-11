@@ -190,7 +190,7 @@ Specific things that signal bad output:
 
 ---
 
-## Current State (as of 2026-05-10)
+## Current State (as of 2026-05-11)
 
 **Document Analysis — Working:**
 - Two-pass pipeline end to end
@@ -228,6 +228,14 @@ Specific things that signal bad output:
 - Paper pathways grouping in SearchResults using existing metadata only:
   `Where I'd start / Useful background / Early or adjacent / Where the story gets messy`
 - Paper cards reframed as invitations into the explainer flow rather than database rows
+- `/search` now acts as the entry surface for new explorations, while `/search/:sessionId` is a persistent exploration workspace
+- Search sessions now persist structured sidebar messages in `search_session_messages`
+- A current-focus strip summarizes the active refinement state of the canvas
+- A constrained conversational refinement sidebar can now:
+  - answer about the current evidence without mutating the canvas
+  - narrow the current canvas by reusing existing papers when possible
+  - trigger focused retrieval when a new subtopic or intervention is introduced
+  - ask a useful narrowing question when the direction is too broad
 
 **Not yet implemented:**
 - Full-text retrieval (always `abstracts_only` for now)
@@ -235,6 +243,9 @@ Specific things that signal bad output:
 - Eval harness grounding metrics (P9)
 - Streaming output for document analysis
 - Mobile-responsive search results layout
+- Checkpoints / branchable exploration history
+- Deep-read escalation from sidebar into richer paper analysis
+- More semantic, planner-aware paper regrouping beyond the current presentation-layer remap
 
 ---
 
@@ -259,6 +270,8 @@ Specific things that signal bad output:
 - The synthesis causal language constraints in the synthesizer prompt
 - The search UX should preserve the current comprehension-first ordering:
   `First read → paper pathways → follow-up refinement → subordinate provenance`
+- The sidebar must remain a refinement/orchestration layer attached to the scientific canvas — not a generic chatbot surface
+- Search session context should remain structured and search-grounded. Do not refactor it into arbitrary message-history chat memory.
 - The `coverageNote` field on `SearchResult` — always set it; never omit or hardcode as covered
 - The retrieval judge + repair loop — do not remove even if it adds latency; quality is the tradeoff
 

@@ -286,3 +286,31 @@ export interface SearchResult {
   coverageNote: "abstracts_only" | "partial_full_text" | "full_text";
   debugMetadata?: DebugMetadata;
 }
+
+export interface SearchSessionMessage {
+  id: number;
+  sessionId: number;
+  role: "user" | "assistant";
+  kind: "refinement" | "system" | "answer" | "clarification" | "canvas_update";
+  content: string;
+  metadata?: {
+    canvasChanged?: boolean;
+    actionType?: "answer_current_results" | "refine_current_canvas" | "focused_retrieval_expansion" | "clarification_prompt";
+    focusBadges?: string[];
+    focusSummary?: string;
+    retrievalMode?: "reused_current_papers" | "focused_retrieval";
+  };
+  createdAt: string;
+}
+
+export interface SearchFocusState {
+  summary: string;
+  badges: string[];
+  lastActionLabel?: string;
+  lastActionDetail?: string;
+}
+
+export interface SearchSessionDetail extends SearchResult {
+  messages: SearchSessionMessage[];
+  focusState: SearchFocusState;
+}

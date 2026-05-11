@@ -96,10 +96,11 @@ export function useStreamingSearch() {
   } | null>(null);
 
   const startSearch = useCallback(
-    async (query: string): Promise<void> => {
+    async (query: string): Promise<SearchResult | null> => {
       setState({ kind: "searching", query });
       papersRef.current = null;
       let hadError = false;
+      let finalResult: SearchResult | null = null;
 
       try {
         await readSSEStream(query, (event) => {
@@ -121,30 +122,40 @@ export function useStreamingSearch() {
             }
             case "synthesis": {
               const p = papersRef.current;
+              finalResult = {
+                sessionId: 0,
+                query,
+                plan: { ...STUB_PLAN, userQuestion: query },
+                papers: p?.papers ?? [],
+                evidenceSnapshot: p?.evidenceSnapshot ?? EMPTY_SNAPSHOT,
+                noEvidence: p?.noEvidence ?? true,
+                synthesisText: event.synthesisText,
+                confidence: event.confidence,
+                evidenceSpans: event.evidenceSpans,
+                followUpOptions: event.followUpOptions,
+                coverageNote: event.coverageNote,
+              };
               setState({
                 kind: "result",
-                result: {
-                  sessionId: 0,
-                  query,
-                  plan: { ...STUB_PLAN, userQuestion: query },
-                  papers: p?.papers ?? [],
-                  evidenceSnapshot: p?.evidenceSnapshot ?? EMPTY_SNAPSHOT,
-                  noEvidence: p?.noEvidence ?? true,
-                  synthesisText: event.synthesisText,
-                  confidence: event.confidence,
-                  evidenceSpans: event.evidenceSpans,
-                  followUpOptions: event.followUpOptions,
-                  coverageNote: event.coverageNote,
-                },
+                result: finalResult,
               });
               break;
             }
             case "done": {
               setState((prev) =>
                 prev.kind === "result"
-                  ? { ...prev, result: { ...prev.result, sessionId: event.sessionId } }
+                  ? {
+                      ...prev,
+                      result: {
+                        ...prev.result,
+                        sessionId: event.sessionId,
+                      },
+                    }
                   : prev,
               );
+              if (finalResult) {
+                finalResult = { ...finalResult, sessionId: event.sessionId };
+              }
               break;
             }
             case "error": {
@@ -161,6 +172,8 @@ export function useStreamingSearch() {
           setState({ kind: "error", message });
         }
       }
+
+      return finalResult;
     },
     [],
   );

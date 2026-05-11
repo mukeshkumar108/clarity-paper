@@ -1,4 +1,4 @@
-import { db, searchSessionsTable, paperCacheTable } from "@workspace/db";
+import { db, searchSessionsTable, paperCacheTable, searchSessionMessagesTable } from "@workspace/db";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { planResearch } from "./researchPlanner";
 import { retrievePlannedPapers } from "./retrieval";
@@ -14,7 +14,7 @@ import { validateGrounding } from "./groundingValidator";
 import { buildEvidenceSpans, computeSpanDiagnostics } from "./evidenceSpans";
 import { enrichWithUnpaywall } from "./unpaywallClient";
 import { logger } from "../logger";
-import type { SearchResult, SearchProgressEvent, RetrievedPaper, RankedPaper, DebugMetadata, PipelineLatency, EvidenceSpan, GroundingDiagnostics, RetrievalSourceCounts } from "./types";
+import type { SearchResult, SearchProgressEvent, RetrievedPaper, RankedPaper, DebugMetadata, PipelineLatency, EvidenceSpan, GroundingDiagnostics, RetrievalSourceCounts, SearchSessionDetail, SearchSessionMessage, SearchFocusState, ResearchPlan } from "./types";
 import type { SynthesisOutput } from "./synthesizer";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -250,6 +250,139 @@ function fallbackSynthesis(): SynthesisOutput {
     paperSummaries: [],
     followUpOptions: [],
   };
+}
+
+function buildDefaultFocusState(query: string, plan: ResearchPlan): SearchFocusState {
+  const entityBadges = plan.entities.slice(0, 3);
+  const summary =
+    entityBadges.length > 0
+      ? `This canvas is currently oriented around ${entityBadges.join(", ")}.`
+      : `This canvas is currently oriented around ${query}.`;
+
+  return {
+    summary,
+    badges: [plan.intentType.replace(/_/g, " "), ...entityBadges].slice(0, 5),
+  };
+}
+
+function formatFocusStateFromMessages(
+  query: string,
+  plan: ResearchPlan,
+  messages: Array<{
+    role: string;
+    kind: string;
+    content: string;
+    metadata?: SearchSessionMessage["metadata"];
+  }>,
+): SearchFocusState {
+  const base = buildDefaultFocusState(query, plan);
+  const lastAssistantWithMetadata = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant" && message.metadata);
+
+  if (!lastAssistantWithMetadata?.metadata) {
+    return base;
+  }
+
+  let lastActionLabel: string | undefined;
+  if (lastAssistantWithMetadata.metadata.actionType === "answer_current_results") {
+    lastActionLabel = "Stayed on current canvas";
+  } else if (lastAssistantWithMetadata.metadata.actionType === "clarification_prompt") {
+    lastActionLabel = "Suggested a narrowing move";
+  } else if (lastAssistantWithMetadata.metadata.retrievalMode === "focused_retrieval") {
+    lastActionLabel = "Ran focused retrieval";
+  } else if (lastAssistantWithMetadata.metadata.retrievalMode === "reused_current_papers") {
+    lastActionLabel = "Reused current papers";
+  } else if (lastAssistantWithMetadata.metadata.canvasChanged) {
+    lastActionLabel = "Refined current canvas";
+  }
+
+  return {
+    summary: lastAssistantWithMetadata.metadata.focusSummary ?? base.summary,
+    badges:
+      lastAssistantWithMetadata.metadata.focusBadges &&
+      lastAssistantWithMetadata.metadata.focusBadges.length > 0
+        ? lastAssistantWithMetadata.metadata.focusBadges
+        : base.badges,
+    lastActionLabel,
+    lastActionDetail: lastAssistantWithMetadata.content,
+  };
+}
+
+export async function buildSearchResultFromPapers(
+  query: string,
+  plan: ResearchPlan,
+  papers: RankedPaper[],
+): Promise<Omit<SearchResult, "sessionId">> {
+  const snapshot = buildEvidenceSnapshot(papers);
+  const noEvidence = papers.length === 0;
+  const synthesis = await synthesisePapers(plan, papers, snapshot);
+  const papersWithSummaries = applySummariesToPapers(papers, synthesis.paperSummaries);
+  const evidenceSpans = buildEvidenceSpans(
+    synthesis.synthesisText,
+    papersWithSummaries,
+    plan.entities,
+  );
+
+  return {
+    query,
+    plan,
+    synthesisText: synthesis.synthesisText,
+    confidence: synthesis.confidence,
+    noEvidence: synthesis.noEvidence || noEvidence,
+    evidenceSnapshot: snapshot,
+    papers: papersWithSummaries,
+    followUpOptions: synthesis.followUpOptions,
+    evidenceSpans,
+    coverageNote: "abstracts_only",
+  };
+}
+
+export async function overwriteSearchSession(
+  sessionId: number,
+  result: Omit<SearchResult, "sessionId">,
+): Promise<void> {
+  await db
+    .update(searchSessionsTable)
+    .set({
+      query: result.query,
+      plannerOutput: result.plan as any,
+      papers: result.papers as any,
+      synthesisText: result.synthesisText,
+      confidence: result.confidence,
+      evidenceSnapshot: result.evidenceSnapshot as any,
+      followUpOptions: result.followUpOptions as any,
+    })
+    .where(eq(searchSessionsTable.id, sessionId));
+}
+
+export async function rerunSearchIntoExistingSession(
+  userId: number,
+  sessionId: number,
+  query: string,
+): Promise<Omit<SearchResult, "sessionId">> {
+  const fresh = await runSearch(userId, query);
+
+  await overwriteSearchSession(sessionId, {
+    query: fresh.query,
+    plan: fresh.plan,
+    synthesisText: fresh.synthesisText,
+    confidence: fresh.confidence,
+    noEvidence: fresh.noEvidence,
+    evidenceSnapshot: fresh.evidenceSnapshot,
+    papers: fresh.papers,
+    followUpOptions: fresh.followUpOptions,
+    evidenceSpans: fresh.evidenceSpans,
+    coverageNote: fresh.coverageNote,
+    debugMetadata: fresh.debugMetadata,
+  });
+
+  if (fresh.sessionId && fresh.sessionId !== sessionId) {
+    await db.delete(searchSessionsTable).where(eq(searchSessionsTable.id, fresh.sessionId));
+  }
+
+  const { sessionId: _newSessionId, ...withoutSessionId } = fresh;
+  return withoutSessionId;
 }
 
 const MAX_SESSIONS_PER_USER = 50;
@@ -583,7 +716,7 @@ export async function runSearch(
 export async function getSearchSession(
   sessionId: number,
   userId: number,
-): Promise<SearchResult | null> {
+): Promise<SearchSessionDetail | null> {
   const [session] = await db
     .select()
     .from(searchSessionsTable)
@@ -599,10 +732,29 @@ export async function getSearchSession(
   const plan = session.plannerOutput as any;
   const papers = (session.papers as any[]) ?? [];
   const snapshot = session.evidenceSnapshot as any;
+  const messages = await db
+    .select()
+    .from(searchSessionMessagesTable)
+    .where(eq(searchSessionMessagesTable.sessionId, session.id))
+    .orderBy(searchSessionMessagesTable.createdAt);
 
   // Re-build evidence spans from stored papers + synthesis text (entities from stored plan)
   const storedEntities: string[] = (plan as any).entities ?? [];
   const evidenceSpans = buildEvidenceSpans(session.synthesisText, papers as RankedPaper[], storedEntities);
+  const normalizedMessages: SearchSessionMessage[] = messages.map((message) => ({
+    id: message.id,
+    sessionId: message.sessionId,
+    role: message.role as SearchSessionMessage["role"],
+    kind: message.kind as SearchSessionMessage["kind"],
+    content: message.content,
+    metadata: (message.metadata ?? {}) as SearchSessionMessage["metadata"],
+    createdAt: message.createdAt.toISOString(),
+  }));
+  const focusState = formatFocusStateFromMessages(
+    session.query,
+    plan as ResearchPlan,
+    normalizedMessages,
+  );
 
   return {
     sessionId: session.id,
@@ -616,6 +768,8 @@ export async function getSearchSession(
     followUpOptions: (session.followUpOptions as any[]) ?? [],
     evidenceSpans,
     coverageNote: "abstracts_only" as const,
+    messages: normalizedMessages,
+    focusState,
   };
 }
 

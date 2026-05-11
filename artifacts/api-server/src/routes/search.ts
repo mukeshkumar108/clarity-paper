@@ -1,15 +1,45 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
-import { runSearch, getSearchSession, listSearchSessions } from "../lib/search/index";
-import type { SearchProgressEvent } from "../lib/search/types";
+import { runSearch, getSearchSession, listSearchSessions, buildSearchResultFromPapers, overwriteSearchSession, rerunSearchIntoExistingSession } from "../lib/search/index";
+import type { SearchProgressEvent, RankedPaper, SearchSessionDetail } from "../lib/search/types";
 import { sanitiseText } from "../lib/documentExtraction";
 import { analyseDocument } from "../lib/documentAnalysisService";
 import { packAnalysisForStorage } from "../lib/analysisContract";
-import { db, documentsTable, documentAnalysisTable, usersTable } from "@workspace/db";
+import { db, documentsTable, documentAnalysisTable, usersTable, searchSessionMessagesTable } from "@workspace/db";
 import { logger } from "../lib/logger";
+import { orchestrateSidebarInput } from "../lib/search/sidebarOrchestrator";
+import { planResearch } from "../lib/search/researchPlanner";
 
 const router: IRouter = Router();
+
+function textForPaper(paper: RankedPaper): string {
+  return `${paper.title} ${paper.abstract}`.toLowerCase();
+}
+
+function applyPaperFilters(
+  session: SearchSessionDetail,
+  filters: {
+    population: "human" | "animal" | "in_vitro" | null;
+    studyDesign: "meta_analysis" | "systematic_review" | "rct" | "cohort" | "cross_sectional" | null;
+    evidenceBuckets: Array<"strongest" | "human_observational" | "mechanistic" | "background" | "conflicting">;
+    keywordFocus: string[];
+  },
+): RankedPaper[] {
+  return session.papers.filter((paper) => {
+    if (filters.population && paper.populationType !== filters.population) return false;
+    if (filters.studyDesign && paper.studyDesign !== filters.studyDesign) return false;
+    if (filters.evidenceBuckets.length > 0 && !filters.evidenceBuckets.includes(paper.evidenceBucket)) return false;
+    if (filters.keywordFocus.length > 0) {
+      const haystack = textForPaper(paper);
+      const hasKeyword = filters.keywordFocus.some((keyword) =>
+        haystack.includes(keyword.toLowerCase()),
+      );
+      if (!hasKeyword) return false;
+    }
+    return true;
+  });
+}
 
 // POST /search — run a new search
 router.post("/search", requireAuth, async (req, res): Promise<void> => {
@@ -113,6 +143,128 @@ router.get("/search/sessions/:id", requireAuth, async (req, res): Promise<void> 
   } catch (err) {
     logger.error({ err, sessionId: id }, "Failed to load search session");
     res.status(500).json({ error: "Failed to load session" });
+  }
+});
+
+// POST /search/sessions/:id/messages — persist a structured sidebar refinement message
+router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Promise<void> => {
+  const rawId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(rawId, 10);
+  const { content } = req.body as { content?: string };
+
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid session id" });
+    return;
+  }
+
+  if (!content || content.trim().length === 0) {
+    res.status(400).json({ error: "content is required" });
+    return;
+  }
+
+  if (content.trim().length > 2000) {
+    res.status(400).json({ error: "content must be under 2000 characters" });
+    return;
+  }
+
+  try {
+    const session = await getSearchSession(id, req.session.userId!);
+    if (!session) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+
+    const trimmed = content.trim();
+    const action = await orchestrateSidebarInput(session, trimmed);
+
+    const [userMessage] = await db
+      .insert(searchSessionMessagesTable)
+      .values({
+        sessionId: id,
+        role: "user",
+        kind: "refinement",
+        content: trimmed,
+        metadata: {
+          canvasChanged: false,
+        },
+      })
+      .returning();
+
+    let assistantKind: "system" | "answer" | "clarification" | "canvas_update" = "system";
+
+    if (action.actionType === "answer_current_results") {
+      assistantKind = "answer";
+    } else if (action.actionType === "clarification_prompt") {
+      assistantKind = "clarification";
+    } else {
+      assistantKind = "canvas_update";
+      const effectiveQuery = action.refinedQuery?.trim() || `${session.query} ${trimmed}`;
+
+      if (action.actionType === "refine_current_canvas" && action.reuseCurrentPapers) {
+        const filteredPapers = applyPaperFilters(session, action.filters);
+
+        if (filteredPapers.length > 0) {
+          const refinedPlan = await planResearch(effectiveQuery);
+          const rebuilt = await buildSearchResultFromPapers(
+            effectiveQuery,
+            refinedPlan,
+            filteredPapers,
+          );
+          await overwriteSearchSession(id, rebuilt);
+        } else {
+          await rerunSearchIntoExistingSession(req.session.userId!, id, effectiveQuery);
+        }
+      } else {
+        await rerunSearchIntoExistingSession(req.session.userId!, id, effectiveQuery);
+      }
+
+    }
+
+    const [assistantMessage] = await db
+      .insert(searchSessionMessagesTable)
+      .values({
+        sessionId: id,
+        role: "assistant",
+        kind: assistantKind,
+        content: action.assistantReply,
+        metadata: {
+          canvasChanged: action.actionType === "refine_current_canvas" || action.actionType === "focused_retrieval_expansion",
+          actionType: action.actionType,
+          focusBadges: action.focusBadges,
+          focusSummary: action.focusSummary,
+          retrievalMode: action.retrievalMode ?? undefined,
+        },
+      })
+      .returning();
+
+    const updatedSession = await getSearchSession(id, req.session.userId!);
+
+    res.status(201).json({
+      messages: [
+        {
+          id: userMessage.id,
+          sessionId: userMessage.sessionId,
+          role: userMessage.role,
+          kind: userMessage.kind,
+          content: userMessage.content,
+          metadata: userMessage.metadata ?? {},
+          createdAt: userMessage.createdAt.toISOString(),
+        },
+        {
+          id: assistantMessage.id,
+          sessionId: assistantMessage.sessionId,
+          role: assistantMessage.role,
+          kind: assistantMessage.kind,
+          content: assistantMessage.content,
+          metadata: assistantMessage.metadata ?? {},
+          createdAt: assistantMessage.createdAt.toISOString(),
+        },
+      ],
+      session: updatedSession,
+    });
+  } catch (err) {
+    logger.error({ err, sessionId: id }, "Failed to persist search session message");
+    res.status(500).json({ error: "Failed to save sidebar message" });
   }
 });
 

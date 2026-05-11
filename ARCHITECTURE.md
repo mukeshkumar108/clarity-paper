@@ -143,8 +143,79 @@ This makes it possible to see when a search silently degraded to fewer upstream 
 | `PaperCard` | Individual paper introduced as a pathway into understanding and into the explainer flow |
 | `EvidenceSnapshot` | Secondary evidence-shape summary: what kind of evidence was found in the curated starting set |
 | `EvidencePanel` | Subordinate claim-level provenance — expandable rows with verbatim abstract snippets |
+| `CurrentFocusStrip` | Compact summary of what the current canvas is optimized for and what changed most recently |
+| `ExplorationSidebar` | Conversational refinement rail attached to the current canvas; persists structured messages and operational updates |
 
 **Order in `SearchResults.tsx`:** SynthesisAnswer → FollowUpOptions → grouped Paper cards → EvidenceSnapshot → collapsed EvidencePanel. The search surface now opens with orientation and paper pathways, while keeping evidence grounding visibly available but visually subordinate.
+
+### Search Session Workspace
+
+Search is no longer only a one-shot result page. The product now has two search routes:
+
+- `/search` — entry page for a new exploration
+- `/search/:sessionId` — persistent exploration workspace
+
+The session workspace keeps the scientific canvas primary:
+
+1. current focus strip
+2. first read
+3. conversational follow-up options
+4. paper pathways
+5. subordinate evidence/provenance
+
+Alongside that canvas, the sidebar acts as a constrained conversational refinement layer. It is not a generic chat surface. Its job is to help the user:
+
+- ask about the current evidence without mutating the canvas
+- narrow the current paper set when lightweight filtering is enough
+- trigger focused retrieval when a new intervention, comparison, or subtopic is introduced
+- ask one useful narrowing question when the user's direction is too broad
+
+### Search Session Persistence
+
+The underlying search session row still stores the current active search canvas:
+
+- `query`
+- `plannerOutput`
+- `papers`
+- `synthesisText`
+- `confidence`
+- `evidenceSnapshot`
+- `followUpOptions`
+
+Structured sidebar exchanges are stored separately in `search_session_messages` with:
+
+- `role`
+- `kind`
+- `content`
+- `metadata`
+
+`metadata` is used to reconstruct the current focus state and the last visible refinement action without carrying a raw generic chat transcript back through the system.
+
+### Sidebar Orchestration
+
+The sidebar uses a lightweight orchestration step before touching the canvas. The orchestrator receives structured state:
+
+- current query
+- current focus summary and badges
+- current synthesis
+- current evidence snapshot
+- top current papers
+- planner entities and intent
+
+It returns one of four operational action types:
+
+- `answer_current_results`
+- `refine_current_canvas`
+- `focused_retrieval_expansion`
+- `clarification_prompt`
+
+Canvas mutation is intentionally lightweight in this phase:
+
+- reuse and filter current papers when possible
+- rebuild the stored synthesis/evidence over that narrowed set when reuse is enough
+- rerun the existing search pipeline into the same session when focused retrieval is needed
+
+This keeps the product paper-first while giving the session a real sense of continuity.
 
 ---
 

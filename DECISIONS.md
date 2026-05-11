@@ -14,6 +14,10 @@ This document tracks fundamental decisions that define the product's identity an
 
 10. **Papers are the authority, not the AI.** Synthesis text is a navigation aid — it helps users orient themselves in the evidence. It is not a verdict. The search surface should open with a warm first read and paper pathways, while provenance remains inspectable and visibly grounded underneath. The UX model is guided scientific exploration, not a floating answer and not a dry audit report.
 
+10a. **Search is an evolving scientific canvas, not a generic chat thread.** The session entity exists to preserve exploration continuity, but the main product surface remains the scientific canvas: first read, paper pathways, subordinate provenance, and the explainer CTA. Conversational behavior belongs in a constrained refinement rail beside the canvas, not in a freeform assistant transcript.
+
+10b. **Sidebar conversation is operational, not performative.** Search follow-ups should classify into a small set of behaviors: ask about current results, refine the current canvas, run focused retrieval, or ask one useful narrowing question. The sidebar must not drift into generic assistant banter, broad personality, or answer-first chat behavior.
+
 11. **Evidence span grounding by construction, not by LLM.** Every snippet shown in the EvidencePanel is a verbatim substring of its source abstract. The matching is CPU-only (bigram + entity weighting + negation detection). No LLM is asked to validate whether a snippet supports a claim — this eliminates one class of hallucination entirely.
 
 12. **Support taxonomy: strongly_supported / partially_supported / related_evidence.** Thresholds are 0.42 / 0.22 / below. These replaced the prior `direct / indirect / contextual` labels, which implied precision the scoring function didn't have.
@@ -35,6 +39,7 @@ This document tracks fundamental decisions that define the product's identity an
 20. **Gemini Flash Lite for pure-JSON search tasks.** The research planner, query repair, and synthesis steps all output structured JSON — they don't write prose. Flash Lite (`google/gemini-2.5-flash-lite`) is fast and accurate for these tasks. Flash (`google/gemini-2.5-flash`) is reserved for Pass 1 document analysis (complex full-paper extraction) and Pass 2 editorial (user-facing prose quality). Each role has its own env var override for independent tuning.
 
 21. **Unpaywall runs in parallel, not sequentially.** Open-access PDF enrichment has near-zero latency cost because it runs concurrently with the synthesis LLM call (which is always slower).
+22. **Search session context stays structured.** The sidebar and session layer should pass structured exploration state back into orchestration: current query, planner intent/entities, focus constraints, current synthesis, evidence shape, and top papers. Raw generic chat history is the wrong abstraction for this surface and should be avoided.
 
 ## Architectural Decisions
 

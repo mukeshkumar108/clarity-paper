@@ -35,7 +35,7 @@ export function RecentSearches({ sessions, onSelect, isLoading }: RecentSearches
   return (
     <div className="space-y-3">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone flex items-center gap-2">
-        <Clock className="w-3.5 h-3.5" /> Recent searches
+        <Clock className="w-3.5 h-3.5" /> Recent explorations
       </p>
       <div className="space-y-1.5">
         {sessions.map((session) => (
