@@ -5,7 +5,7 @@ import { db, usersTable, documentsTable, documentAnalysisTable, documentQuestion
 import { CreateDocumentBody, ListDocumentsQueryParams } from "@workspace/api-zod";
 import { requireAuth } from "../middlewares/auth";
 import { extractText, sanitiseText } from "../lib/documentExtraction";
-import { analyseDocument, answerDocumentQuestion } from "../lib/documentAnalysisService";
+import { analyseDocument, answerDocumentQuestion, type DocumentAnalysisTimings } from "../lib/documentAnalysisService";
 import { getLimits } from "../lib/usageLimits";
 import { logger } from "../lib/logger";
 import { normalizeStoredAnalysis, packAnalysisForStorage } from "../lib/analysisContract";
@@ -203,17 +203,22 @@ router.post("/documents/extract-title", requireAuth, upload.single("file"), asyn
 router.post("/documents/:id/analyse", requireAuth, async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
+  const analyseStart = Date.now();
+  let stepStart = Date.now();
 
   const user = await getSessionUser(req.session.userId!);
+  const dbFetchUserMs = Date.now() - stepStart;
   if (!user) {
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
 
+  stepStart = Date.now();
   const [doc] = await db
     .select()
     .from(documentsTable)
     .where(and(eq(documentsTable.id, id), eq(documentsTable.userId, user.id)));
+  const dbFetchDocumentMs = Date.now() - stepStart;
 
   if (!doc) {
     res.status(404).json({ error: "Document not found" });
@@ -227,18 +232,22 @@ router.post("/documents/:id/analyse", requireAuth, async (req, res): Promise<voi
 
   // Check if already analysed. During active product iteration we always
   // regenerate so existing studies pick up the latest pipeline changes.
+  stepStart = Date.now();
   const [existing] = await db
     .select()
     .from(documentAnalysisTable)
     .where(eq(documentAnalysisTable.documentId, id));
+  const dbCheckExistingMs = Date.now() - stepStart;
 
-  // Set status to analysing and respond immediately — the LLM pipeline runs
-  // in the background so the client is not blocked waiting for the HTTP response.
+  stepStart = Date.now();
   await db.update(documentsTable).set({ status: "analysing" }).where(eq(documentsTable.id, id));
+  const dbUpdateAnalysingMs = Date.now() - stepStart;
   res.json({ status: "analysing", documentId: id });
 
   // Background pipeline — errors are caught internally and written to the DB.
   void (async () => {
+    const bgStart = Date.now();
+    const timings: Partial<DocumentAnalysisTimings> = {};
     try {
       const result = await analyseDocument(
         doc.extractedText!,
@@ -246,6 +255,7 @@ router.post("/documents/:id/analyse", requireAuth, async (req, res): Promise<voi
         doc.researchField ?? "",
         doc.goal ?? "",
         user.preferredLanguage ?? "English",
+        { timings },
       );
       const stored = packAnalysisForStorage(result);
       const analysisPayload = {
@@ -268,6 +278,7 @@ router.post("/documents/:id/analyse", requireAuth, async (req, res): Promise<voi
         isDemo: result.isDemo,
       };
 
+      stepStart = Date.now();
       if (existing) {
         await db
           .update(documentAnalysisTable)
@@ -278,8 +289,10 @@ router.post("/documents/:id/analyse", requireAuth, async (req, res): Promise<voi
         await db.insert(documentAnalysisTable).values(analysisPayload);
         logger.info({ documentId: id }, "Document analysis created");
       }
+      const dbUpsertAnalysisMs = Date.now() - stepStart;
 
       const extractedTitle = result.paperMetadata?.title?.trim();
+      stepStart = Date.now();
       await db
         .update(documentsTable)
         .set({
@@ -288,16 +301,51 @@ router.post("/documents/:id/analyse", requireAuth, async (req, res): Promise<voi
           ...(extractedTitle ? { title: extractedTitle } : {}),
         })
         .where(eq(documentsTable.id, id));
+      const dbUpdateCompletedMs = Date.now() - stepStart;
 
+      stepStart = Date.now();
       await db.insert(usageEventsTable).values({
         userId: user.id,
         eventType: "document_analysed",
         documentId: id,
       });
+      const dbUsageEventMs = Date.now() - stepStart;
 
-      logger.info({ documentId: id }, "Background analysis complete");
+      logger.info({
+        documentId: id,
+        userId: user.id,
+        timings: {
+          dbFetchUserMs,
+          dbFetchDocumentMs,
+          dbCheckExistingMs,
+          dbUpdateAnalysingMs,
+          ...timings,
+          dbUpsertAnalysisMs,
+          dbUpdateCompletedMs,
+          dbUsageEventMs,
+          totalBackgroundMs: Date.now() - bgStart,
+          totalRouteMs: Date.now() - analyseStart,
+        },
+      }, "Document analysis timing");
     } catch (err) {
-      logger.error({ err, documentId: id }, "Background analysis failed");
+      logger.error({
+        err,
+        documentId: id,
+        userId: user.id,
+        timings: {
+          dbFetchUserMs,
+          dbFetchDocumentMs,
+          dbCheckExistingMs,
+          dbUpdateAnalysingMs,
+          ...timings,
+          totalBackgroundMs: Date.now() - bgStart,
+          totalRouteMs: Date.now() - analyseStart,
+        },
+        failedAtStage: timings.pass1LlmMs === undefined ? "pass1"
+          : timings.pass2AttemptsMs === undefined ? "pass2"
+          : timings.assemblyMs === undefined ? "assembly"
+          : "db_write",
+      }, "Background analysis failed");
       await db.update(documentsTable).set({ status: "failed" }).where(eq(documentsTable.id, id));
     }
   })();

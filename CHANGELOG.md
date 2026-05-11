@@ -2,6 +2,18 @@
 
 All notable product and engineering changes should be tracked here.
 
+## 2026-05-11
+
+### Document Analysis — Observability
+- added per-pass timing instrumentation to the document analysis pipeline
+- exported `DocumentAnalysisTimings` interface from `documentAnalysisService.ts`
+- measures: `pass1LlmMs`, `pass1ParseMs`, `editorialContextBuildMs`, `pass2AttemptsMs[]`, `pass2ParseMs`, `assemblyMs`, `reviewPassLlmMs`, `reviewPassParseMs`
+- route-level timing in `documents.ts`: `dbFetchUserMs`, `dbFetchDocumentMs`, `dbCheckExistingMs`, `dbUpdateAnalysingMs`, `dbUpsertAnalysisMs`, `dbUpdateCompletedMs`, `dbUsageEventMs`, `totalBackgroundMs`, `totalRouteMs`
+- structured JSON log on success (`"Document analysis timing"`) with documentId, userId, and full timings breakdown
+- structured JSON log on failure (`"Background analysis failed"`) with timings up to the failure point and a `failedAtStage` heuristic
+- no product behavior changes; no schema changes; no prompt or model changes
+- timing is threaded through an optional `timings` accumulator — the search route's `"Analyse this paper"` fast-mode path is unaffected
+
 ## 2026-05-10
 
 ### Reader UX

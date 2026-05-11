@@ -36,6 +36,17 @@ class EditorialSynthesisFailedError extends Error {
   }
 }
 
+export interface DocumentAnalysisTimings {
+  pass1LlmMs: number;
+  pass1ParseMs: number;
+  editorialContextBuildMs: number;
+  pass2AttemptsMs: number[];
+  pass2ParseMs: number;
+  assemblyMs: number;
+  reviewPassLlmMs: number | null;
+  reviewPassParseMs: number | null;
+}
+
 const STRUCTURED_SYSTEM_PROMPT = `You are a scientific research analyst. Your job is to extract structured understanding from a research paper or abstract.
 
 This output is internal only.
@@ -299,13 +310,14 @@ export async function analyseDocument(
   researchField: string,
   goal: string,
   preferredLanguage: string = "English",
-  options?: { fastMode?: boolean },
+  options?: { fastMode?: boolean; timings?: Partial<DocumentAnalysisTimings> },
 ): Promise<AnalysisResult & { isDemo: boolean }> {
   if (isDemoMode) {
     return { ...DEMO_ANALYSIS, isDemo: true };
   }
 
   const fast = options?.fastMode ?? false;
+  const t = options?.timings;
   logger.info(
     {
       textLength: text.length,
@@ -315,11 +327,13 @@ export async function analyseDocument(
     },
     "Analysing document",
   );
-  const structured = await runStructuredPass(text, documentType, researchField, goal, fast);
-  const editorial = await runEditorialPass(structured, documentType, researchField, goal, preferredLanguage, fast);
+  const structured = await runStructuredPass(text, documentType, researchField, goal, fast, t);
+  const editorial = await runEditorialPass(structured, documentType, researchField, goal, preferredLanguage, fast, t);
+  const assemblyStart = Date.now();
   const combined = buildAnalysisFromPasses(structured, editorial, { text, documentType });
+  if (t) t.assemblyMs = Date.now() - assemblyStart;
   if (fast) return { ...combined, isDemo: false };
-  return reviewFinalAnalysis({ ...combined, isDemo: false }, text, documentType, researchField, goal);
+  return reviewFinalAnalysis({ ...combined, isDemo: false }, text, documentType, researchField, goal, t);
 }
 
 async function runStructuredPass(
@@ -328,6 +342,7 @@ async function runStructuredPass(
   researchField: string,
   goal: string,
   fast = false,
+  timings?: Partial<DocumentAnalysisTimings>,
 ): Promise<StructuredAnalysisDraft> {
   const userMessage = `Extract the structured scientific understanding from the following research paper.
 
@@ -348,15 +363,23 @@ Important:
 - Keep suggested questions tied to what this paper specifically leaves open
 - Prefer null-style uncertainty over invention`;
 
+  const llmStart = Date.now();
   try {
     const raw = await callLLM(STRUCTURED_SYSTEM_PROMPT, userMessage, structuredAnalysisSchema, {
       model: fast ? FAST_STRUCTURED_MODEL : STRUCTURED_MODEL,
       temperature: 0.1,
       timeoutMs: fast ? 45_000 : 90_000,
     });
-    return structuredAnalysisSchema.parse(JSON.parse(raw));
+    if (timings) timings.pass1LlmMs = Date.now() - llmStart;
+
+    const parseStart = Date.now();
+    const parsed = structuredAnalysisSchema.parse(JSON.parse(raw));
+    if (timings) timings.pass1ParseMs = Date.now() - parseStart;
+
+    return parsed;
   } catch (err) {
-    logger.error({ err }, "Structured analysis failed");
+    if (timings) timings.pass1LlmMs = Date.now() - llmStart;
+    logger.error({ err, pass1LlmMs: timings?.pass1LlmMs }, "Structured analysis failed");
     throw err;
   }
 }
@@ -369,8 +392,11 @@ async function runEditorialPass(
   goal: string,
   preferredLanguage: string = "English",
   fast = false,
+  timings?: Partial<DocumentAnalysisTimings>,
 ): Promise<EditorialSummaryDraft> {
+  const ctxStart = Date.now();
   const userMessage = buildEditorialContext(structured);
+  if (timings) timings.editorialContextBuildMs = Date.now() - ctxStart;
 
   const languagePrefix =
     preferredLanguage !== "English"
@@ -396,30 +422,39 @@ async function runEditorialPass(
     },
   ] as const;
 
+  if (timings) timings.pass2AttemptsMs = [];
   let lastError: unknown = null;
 
   for (const attempt of attempts) {
+    const attemptStart = Date.now();
     try {
       const raw = await callLLM(systemPrompt, userMessage, editorialSummarySchema, {
         model: attempt.model,
         temperature: 0.2,
         timeoutMs: attempt.timeoutMs,
       });
+      if (timings) timings.pass2AttemptsMs!.push(Date.now() - attemptStart);
       logger.info(
-        { model: attempt.model, attempt: attempt.label, fast },
+        { model: attempt.model, attempt: attempt.label, fast, attemptMs: timings?.pass2AttemptsMs?.slice(-1)[0] },
         "Editorial synthesis succeeded",
       );
-      return editorialSummarySchema.parse(JSON.parse(raw));
+
+      const parseStart = Date.now();
+      const parsed = editorialSummarySchema.parse(JSON.parse(raw));
+      if (timings) timings.pass2ParseMs = Date.now() - parseStart;
+
+      return parsed;
     } catch (err) {
+      if (timings) timings.pass2AttemptsMs!.push(Date.now() - attemptStart);
       lastError = err;
       logger.warn(
-        { err, model: attempt.model, attempt: attempt.label, fast },
+        { err, model: attempt.model, attempt: attempt.label, fast, attemptMs: timings?.pass2AttemptsMs?.slice(-1)[0] },
         "Editorial synthesis attempt failed",
       );
     }
   }
 
-  logger.error({ err: lastError, fast }, "Editorial synthesis failed after retry and backup");
+  logger.error({ err: lastError, fast, pass2AttemptsMs: timings?.pass2AttemptsMs }, "Editorial synthesis failed after retry and backup");
   throw new EditorialSynthesisFailedError();
 }
 
@@ -429,8 +464,13 @@ async function reviewFinalAnalysis(
   documentType: string,
   researchField: string,
   goal: string,
+  timings?: Partial<DocumentAnalysisTimings>,
 ): Promise<AnalysisResult & { isDemo: boolean }> {
   if (!REVIEW_PASS_ENABLED || isDemoMode) {
+    if (timings) {
+      timings.reviewPassLlmMs = null;
+      timings.reviewPassParseMs = null;
+    }
     return draft;
   }
 
@@ -468,12 +508,17 @@ ${JSON.stringify({
 
 Improve the draft so it is clearer, more coherent, and more useful to a non-expert. Lead with understanding, then calibration, then practical meaning.`;
 
+  const reviewLlmStart = Date.now();
   try {
     const raw = await callLLM(reviewSystemPrompt, reviewMessage, editorialSummarySchema, {
       model: REVIEW_MODEL,
       temperature: 0.1,
     });
+    if (timings) timings.reviewPassLlmMs = Date.now() - reviewLlmStart;
+
+    const reviewParseStart = Date.now();
     const reviewed = editorialSummarySchema.parse(JSON.parse(raw));
+    if (timings) timings.reviewPassParseMs = Date.now() - reviewParseStart;
 
     return {
       ...draft,
@@ -524,7 +569,8 @@ Improve the draft so it is clearer, more coherent, and more useful to a non-expe
       isDemo: false,
     };
   } catch (err) {
-    logger.error({ err }, "Review pass failed");
+    if (timings) timings.reviewPassLlmMs = Date.now() - reviewLlmStart;
+    logger.error({ err, reviewPassLlmMs: timings?.reviewPassLlmMs }, "Review pass failed");
     return draft;
   }
 }
