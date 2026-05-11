@@ -295,7 +295,12 @@ export interface SearchSessionMessage {
   content: string;
   metadata?: {
     canvasChanged?: boolean;
-    actionType?: "answer_current_results" | "refine_current_canvas" | "focused_retrieval_expansion" | "clarification_prompt";
+    actionType?:
+      | "answer_current_results"
+      | "refine_current_canvas"
+      | "focused_retrieval_expansion"
+      | "clarification_prompt"
+      | "exhaustive_intent_transparency";
     focusBadges?: string[];
     focusSummary?: string;
     retrievalMode?: "reused_current_papers" | "focused_retrieval";

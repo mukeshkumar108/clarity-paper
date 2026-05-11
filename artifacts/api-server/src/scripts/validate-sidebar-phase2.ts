@@ -190,7 +190,10 @@ async function runScenario(scenario: Scenario): Promise<ValidationResult> {
     let canvasMutated = false;
     let usedCurrentPapers = false;
 
-    if (action.actionType === "answer_current_results") {
+    if (
+      action.actionType === "answer_current_results" ||
+      action.actionType === "exhaustive_intent_transparency"
+    ) {
       assistantKind = "answer";
     } else if (action.actionType === "clarification_prompt") {
       assistantKind = "clarification";

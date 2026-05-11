@@ -236,6 +236,12 @@ Specific things that signal bad output:
   - narrow the current canvas by reusing existing papers when possible
   - trigger focused retrieval when a new subtopic or intervention is introduced
   - ask a useful narrowing question when the direction is too broad
+  - detect exhaustive-intent requests like "find all papers" and respond with curated-scope transparency instead of pretending the current set is comprehensive
+- Phase 2 validation harness covers 10 representative sidebar scenarios and currently passes the three previously failing cases:
+  - personal-context refinement no longer falls through to a generic current-results answer
+  - explicit narrowing requests no longer claim a canvas update unless mutation actually happens
+  - exhaustive-intent requests no longer masquerade as exhaustive retrieval
+- Current-results sidebar answers are now more restrained around abstract-only ambiguity such as duration, dosage, exact protocol, subgroup effects, and adverse effects
 
 **Not yet implemented:**
 - Full-text retrieval (always `abstracts_only` for now)

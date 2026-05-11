@@ -17,6 +17,8 @@ This document tracks fundamental decisions that define the product's identity an
 10a. **Search is an evolving scientific canvas, not a generic chat thread.** The session entity exists to preserve exploration continuity, but the main product surface remains the scientific canvas: first read, paper pathways, subordinate provenance, and the explainer CTA. Conversational behavior belongs in a constrained refinement rail beside the canvas, not in a freeform assistant transcript.
 
 10b. **Sidebar conversation is operational, not performative.** Search follow-ups should classify into a small set of behaviors: ask about current results, refine the current canvas, run focused retrieval, or ask one useful narrowing question. The sidebar must not drift into generic assistant banter, broad personality, or answer-first chat behavior.
+10c. **Exhaustive-intent requests must be handled honestly.** If a user asks for exhaustive or bibliographic coverage (`find all papers`, `show all studies`, `literature review`, `comprehensive search`), the product must not imply that the current curated set is complete. Until a true broader-retrieval mode exists, the response should explicitly say the current canvas is a curated starting set.
+10d. **Abstract-only ambiguity should not be over-inferred in the sidebar.** If the current evidence does not clearly answer duration, long-term versus short-term effects, protocol, dosage, subgroup effects, or harms, the sidebar should say that plainly rather than manufacturing precision from missing metadata.
 
 11. **Evidence span grounding by construction, not by LLM.** Every snippet shown in the EvidencePanel is a verbatim substring of its source abstract. The matching is CPU-only (bigram + entity weighting + negation detection). No LLM is asked to validate whether a snippet supports a claim — this eliminates one class of hallucination entirely.
 
@@ -40,6 +42,7 @@ This document tracks fundamental decisions that define the product's identity an
 
 21. **Unpaywall runs in parallel, not sequentially.** Open-access PDF enrichment has near-zero latency cost because it runs concurrently with the synthesis LLM call (which is always slower).
 22. **Search session context stays structured.** The sidebar and session layer should pass structured exploration state back into orchestration: current query, planner intent/entities, focus constraints, current synthesis, evidence shape, and top papers. Raw generic chat history is the wrong abstraction for this surface and should be avoided.
+23. **Cache-layer correctness must not leak warnings into normal search behavior.** Search-side persistence helpers like `paper_cache` may be opportunistic and non-blocking, but they should still deduplicate internal batch writes so avoidable database warnings do not mask real retrieval issues.
 
 ## Architectural Decisions
 

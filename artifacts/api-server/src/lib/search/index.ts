@@ -66,6 +66,16 @@ function makeCacheKey(paper: RetrievedPaper): string {
   return `${paper.source}:${paper.externalId}`;
 }
 
+function deduplicateCacheUpserts(
+  rows: typeof paperCacheTable.$inferInsert[],
+): typeof paperCacheTable.$inferInsert[] {
+  const unique = new Map<string, typeof paperCacheTable.$inferInsert>();
+  for (const row of rows) {
+    unique.set(row.cacheKey, row);
+  }
+  return [...unique.values()];
+}
+
 function countSources(papers: Array<RetrievedPaper | RankedPaper>): RetrievalSourceCounts {
   let semanticScholar = 0;
   let openAlex = 0;
@@ -141,8 +151,9 @@ async function hydratePapersFromCache(papers: RetrievedPaper[]): Promise<Retriev
 
     // Batch upsert stale/missing rows (fire-and-forget — don't block search)
     if (upserts.length > 0) {
+      const dedupedUpserts = deduplicateCacheUpserts(upserts);
       db.insert(paperCacheTable)
-        .values(upserts)
+        .values(dedupedUpserts)
         .onConflictDoUpdate({
           target: paperCacheTable.cacheKey,
           set: {
@@ -287,6 +298,8 @@ function formatFocusStateFromMessages(
   let lastActionLabel: string | undefined;
   if (lastAssistantWithMetadata.metadata.actionType === "answer_current_results") {
     lastActionLabel = "Stayed on current canvas";
+  } else if (lastAssistantWithMetadata.metadata.actionType === "exhaustive_intent_transparency") {
+    lastActionLabel = "Flagged curated scope";
   } else if (lastAssistantWithMetadata.metadata.actionType === "clarification_prompt") {
     lastActionLabel = "Suggested a narrowing move";
   } else if (lastAssistantWithMetadata.metadata.retrievalMode === "focused_retrieval") {

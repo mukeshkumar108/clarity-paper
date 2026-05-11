@@ -192,7 +192,10 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
 
     let assistantKind: "system" | "answer" | "clarification" | "canvas_update" = "system";
 
-    if (action.actionType === "answer_current_results") {
+    if (
+      action.actionType === "answer_current_results" ||
+      action.actionType === "exhaustive_intent_transparency"
+    ) {
       assistantKind = "answer";
     } else if (action.actionType === "clarification_prompt") {
       assistantKind = "clarification";

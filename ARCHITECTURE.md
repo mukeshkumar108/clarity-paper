@@ -208,6 +208,9 @@ It returns one of four operational action types:
 - `refine_current_canvas`
 - `focused_retrieval_expansion`
 - `clarification_prompt`
+- `exhaustive_intent_transparency`
+
+The fifth path is intentionally non-mutating: when the user asks for exhaustive or bibliographic coverage (`find all papers`, `show all studies`, `literature review`, `comprehensive search`), the system explicitly says the current canvas is a curated starting set and does not pretend that the current papers are exhaustive.
 
 Canvas mutation is intentionally lightweight in this phase:
 
@@ -216,6 +219,21 @@ Canvas mutation is intentionally lightweight in this phase:
 - rerun the existing search pipeline into the same session when focused retrieval is needed
 
 This keeps the product paper-first while giving the session a real sense of continuity.
+
+### Sidebar Guardrails
+
+The orchestration layer now has a few explicit behavioral guardrails on top of the model output:
+
+- personal-context refinements like `I'm just tired all the time` are treated as a change in exploration angle, not as a generic current-results question
+- clarification replies must actually clarify; they must not claim that the canvas was already filtered or updated
+- current-results answers are conservative when the abstract set does not support a strong read on duration, protocol, dosage, subgroup effects, or harms
+- explicit exhaustive-intent phrases are intercepted and answered with transparency instead of fake breadth
+
+### Paper Cache Deduplication
+
+The `paper_cache` layer now deduplicates upsert rows by `cacheKey` before issuing a bulk `INSERT ... ON CONFLICT DO UPDATE`.
+
+This prevents the prior Postgres `ERROR 21000` warning caused by duplicate constrained values inside a single upsert batch. The fix is operational only; it does not change retrieval or ranking behavior.
 
 ---
 
