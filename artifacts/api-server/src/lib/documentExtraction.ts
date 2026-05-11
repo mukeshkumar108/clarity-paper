@@ -53,6 +53,7 @@ export interface ExtractionResult {
   text: string;
   pageCountEstimate: number;
   wordCount: number;
+  conversionMs?: number;
 }
 
 /**
@@ -130,13 +131,17 @@ export async function extractText(
   }
 
   if (ext === "pdf" || mimeType === "application/pdf") {
-    logger.info({ filename }, "Converting PDF to markdown via pymupdf4llm");
+    const fileSizeKb = Math.round(buffer.length / 1024);
+    const convStart = Date.now();
+    logger.info({ filename, fileSizeKb }, "Converting PDF to markdown via pymupdf4llm");
     const markdown = await pdfToMarkdown(buffer);
+    const conversionMs = Date.now() - convStart;
     const suggestedTitle = extractMetadataTitle(markdown);
     const text = sanitiseText(markdown);
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
     const pageCountEstimate = Math.max(1, Math.ceil(wordCount / 250));
-    return { text, wordCount, pageCountEstimate, suggestedTitle };
+    logger.info({ filename, fileSizeKb, conversionMs, wordCount, pageCountEstimate }, "PDF conversion complete");
+    return { text, wordCount, pageCountEstimate, suggestedTitle, conversionMs };
   }
 
   if (

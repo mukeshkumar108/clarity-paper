@@ -65,7 +65,6 @@ export default function DocumentNew() {
   const [file, setFile] = useState<File | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [fileVisible, setFileVisible] = useState(false);
-  const [titleLoading, setTitleLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -155,34 +154,12 @@ export default function DocumentNew() {
     }
   };
 
-  const handleFileSelected = async (f: File) => {
+  const handleFileSelected = (f: File) => {
     setFile(f);
     setFileVisible(false);
     requestAnimationFrame(() => setFileVisible(true));
     setTitleTarget("");
-    setTitle("");
-    setTitleLoading(true);
-
-    const formData = new FormData();
-    formData.append("file", f);
-    try {
-      const res = await fetch(getApiUrl("/api/documents/extract-title"), {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      if (res.ok) {
-        const data = await res.json() as { title: string };
-        const extracted = data.title || f.name.replace(/\.[^.]+$/, "");
-        setTitleTarget(extracted);
-      } else {
-        setTitleTarget(f.name.replace(/\.[^.]+$/, ""));
-      }
-    } catch {
-      setTitleTarget(f.name.replace(/\.[^.]+$/, ""));
-    } finally {
-      setTitleLoading(false);
-    }
+    setTitle(f.name.replace(/\.[^.]+$/, ""));
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -270,10 +247,9 @@ export default function DocumentNew() {
                         onClick={(ev) => {
                           ev.stopPropagation();
                           setFile(null);
-                          setFileVisible(false);
-                          setTitleTarget("");
-                          setTitle("");
-                          setTitleLoading(false);
+                           setFileVisible(false);
+                           setTitleTarget("");
+                           setTitle("");
                         }}
                       >
                         Remove file
@@ -313,25 +289,22 @@ export default function DocumentNew() {
 
           <aside className="space-y-4">
             <div className="p-6 bg-white rounded-[24px] border border-pebble-gray shadow-subtle space-y-6">
-              <div className="space-y-2">
-                <Label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone">Paper title</Label>
-                <div className="relative">
-                  <Input
-                    type="text"
-                    value={title}
-                    onChange={(e) => {
-                      setTitle(e.target.value);
-                      setTitleTarget("");
-                    }}
-                    placeholder={titleLoading ? "Extracting title…" : "e.g. Impact of sleep on cognitive function"}
-                    className={`h-11 border pr-10 ${titleLoading ? "opacity-60" : ""}`}
-                    required
-                  />
-                  {titleLoading && (
-                    <Loader2 className="absolute right-3 top-3 w-5 h-5 animate-spin text-muted-stone" />
-                  )}
-                </div>
-              </div>
+                <div className="space-y-2">
+                 <Label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone">Paper title</Label>
+                 <div className="relative">
+                   <Input
+                     type="text"
+                     value={title}
+                     onChange={(e) => {
+                       setTitle(e.target.value);
+                       setTitleTarget("");
+                     }}
+                     placeholder="e.g. Impact of sleep on cognitive function"
+                     className="h-11 border"
+                     required
+                   />
+                 </div>
+               </div>
 
               <div className="space-y-2">
                 <Label className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone">Study type</Label>
@@ -402,7 +375,7 @@ export default function DocumentNew() {
                   {isPending ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      {uploading ? "Uploading file…" : "Starting analysis…"}
+                      {uploading ? "Uploading & extracting text…" : "Starting analysis…"}
                     </>
                   ) : (
                     <>

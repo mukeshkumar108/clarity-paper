@@ -32,6 +32,26 @@ All notable product and engineering changes should be tracked here.
 - no product behavior changes; no schema changes; no prompt or model changes
 - timing is threaded through an optional `timings` accumulator — the search route's `"Analyse this paper"` fast-mode path is unaffected
 
+## 2026-05-12
+
+### Document Analysis — Upload Speed
+- removed pre-upload PDF title extraction (`/api/documents/extract-title` no longer called on file select)
+- file select now sets title to filename instantly instead of running full PDF→markdown conversion (~18s saved)
+- route left in place but marked deprecated in case other flows depend on it
+- upload route logs filename, fileSizeKb, conversionMs, extractTotalMs, context for production monitoring
+
+### Document Analysis — PDF Conversion Speed
+- optimized `pdf_to_markdown.py` pymupdf4llm options: `ignore_images=True`, `ignore_graphics=True`, `detect_bg_color=False`, `force_text=True`
+- these skip image bounding box collection, vector graphics path processing, and per-page pixmap rendering for background color detection
+- keeps pymupdf4llm's full layout engine (handles variable column layouts, spanning tables, mixed single/double-column pages correctly)
+- benchmarked at 2.5x faster with 100% word retention on synthetic PDFs; real papers with figures will see more
+- Python subprocess spawn still adds ~3-5s per conversion — persistent worker is a documented future optimization when traffic justifies it
+
+### Frontend UX
+- removed `titleLoading` state and extract-title spinner from upload form
+- title field populated with filename (no extension) on file select — instant, no network call
+- submit button copy: "Uploading & extracting text…" instead of "Uploading file…"
+
 ## 2026-05-10
 
 ### Reader UX

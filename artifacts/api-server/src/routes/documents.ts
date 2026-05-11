@@ -148,7 +148,8 @@ router.post("/documents/upload", requireAuth, upload.single("file"), async (req,
     return;
   }
 
-  let extracted: { text: string; pageCountEstimate: number; wordCount: number; suggestedTitle?: string };
+  let extracted: { text: string; pageCountEstimate: number; wordCount: number; suggestedTitle?: string; conversionMs?: number };
+  const extractStart = Date.now();
   try {
     extracted = await extractText(req.file.buffer, req.file.mimetype, req.file.originalname);
   } catch (err) {
@@ -156,6 +157,7 @@ router.post("/documents/upload", requireAuth, upload.single("file"), async (req,
     res.status(400).json({ error: message });
     return;
   }
+  const extractTotalMs = Date.now() - extractStart;
 
   const title = (req.body.title as string) || extracted.suggestedTitle || req.file.originalname;
   const documentType = (req.body.documentType as string) || null;
@@ -180,11 +182,20 @@ router.post("/documents/upload", requireAuth, upload.single("file"), async (req,
     })
     .returning();
 
-  req.log.info({ documentId: doc.id, wordCount: extracted.wordCount }, "Document uploaded");
+  req.log.info({
+    documentId: doc.id,
+    filename: req.file.originalname,
+    fileSizeKb: Math.round(req.file.size / 1024),
+    wordCount: extracted.wordCount,
+    pageCountEstimate: extracted.pageCountEstimate,
+    conversionMs: extracted.conversionMs,
+    extractTotalMs,
+    context: "upload",
+  }, "Document uploaded");
   res.status(201).json(mapDocument(doc));
 });
 
-// Extract title suggestion from file (pre-upload helper)
+// Extract title suggestion from file (DEPRECATED: frontend no longer calls this for PDF uploads)
 router.post("/documents/extract-title", requireAuth, upload.single("file"), async (req, res): Promise<void> => {
   if (!req.file) {
     res.status(400).json({ error: "No file provided" });

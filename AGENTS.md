@@ -211,6 +211,10 @@ Specific things that signal bad output:
 - Per-pass timing instrumentation on document analysis pipeline (Pass 1 LLM + parse, Pass 2 context build + attempts + parse, assembly, optional review pass, route-level DB reads/writes, total background duration)
 - Upload/analyse duplicate-submission guards (frontend uploading state, backend already-analysing early return, disabled buttons during mutation)
 - Pass 2 editorial attempt timeouts tightened to 60s per attempt (was 180s), 75s for backup (was 210s)
+- Pre-upload PDF title extraction removed — file select sets title to filename instantly, no more duplicate PDF→markdown conversion on upload (~18s saved)
+- PDF conversion optimized: pymupdf4llm called with `ignore_images=True`, `ignore_graphics=True`, `detect_bg_color=False` — 2.5x faster, 100% word retention
+- Upload route logs conversion timing: filename, fileSizeKb, conversionMs, extractTotalMs
+- Python subprocess spawn adds ~3-5s per conversion; persistent worker is a future optimization
 
 **Search — Working:**
 - Multi-source retrieval: Semantic Scholar + OpenAlex + EuropePMC + CORE in parallel
@@ -247,6 +251,7 @@ Specific things that signal bad output:
 - Current-results sidebar answers are now more restrained around abstract-only ambiguity such as duration, dosage, exact protocol, subgroup effects, and adverse effects
 
 **Not yet implemented:**
+- Persistent Python PDF conversion worker (subprocess spawn adds ~3-5s per conversion; easy win when traffic justifies it)
 - Full-text retrieval (always `abstracts_only` for now)
 - Explicit contradiction surfacing in UI (P6 — handled in synthesis prompt only)
 - Eval harness grounding metrics (P9)

@@ -13,7 +13,13 @@ def main() -> None:
 
     try:
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-        md = pymupdf4llm.to_markdown(doc)
+        md = pymupdf4llm.to_markdown(
+            doc,
+            ignore_images=True,
+            ignore_graphics=True,
+            detect_bg_color=False,
+            force_text=True,
+        )
         sys.stdout.write(md)
     except Exception as exc:
         sys.stderr.write(f"PDF conversion failed: {exc}\n")
