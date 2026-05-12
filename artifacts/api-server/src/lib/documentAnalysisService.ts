@@ -15,9 +15,9 @@ const LEGAL_DISCLAIMER =
   "Clarity Paper provides research explanation and analysis, not medical or professional advice. Always consult a qualified professional before making health or lifestyle changes based on research.";
 const STRUCTURED_MODEL =
   process.env.OPENROUTER_STRUCTURED_MODEL || process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
-const EDITORIAL_MODEL = process.env.OPENROUTER_EDITORIAL_MODEL || "google/gemini-2.5-flash";
+const EDITORIAL_MODEL = process.env.OPENROUTER_EDITORIAL_MODEL || "anthropic/claude-3.5-haiku";
 const EDITORIAL_BACKUP_MODEL =
-  process.env.OPENROUTER_EDITORIAL_BACKUP_MODEL || "anthropic/claude-3.5-haiku";
+  process.env.OPENROUTER_EDITORIAL_BACKUP_MODEL || "google/gemini-2.5-flash";
 const FAST_STRUCTURED_MODEL =
   process.env.OPENROUTER_FAST_STRUCTURED_MODEL ||
   process.env.OPENROUTER_FAST_MODEL ||
@@ -602,7 +602,6 @@ function buildEditorialContext(structured: StructuredAnalysisDraft): string {
       plainMeaning: item.plainMeaning || null,
       population: item.populationOrSample || null,
       strength: item.supportLevel || null,
-      direction: item.effectDirection || null,
     })),
     trust: {
       overallReason: structured.trust.reason || null,
@@ -622,9 +621,6 @@ function buildEditorialContext(structured: StructuredAnalysisDraft): string {
     relevance: {
       whyItMatters: structured.relevance.whyItMatters || null,
       practicalMeaning: structured.relevance.practicalMeaning || null,
-      actionability: structured.relevance.actionability || null,
-      actionabilityReason: structured.relevance.actionabilityReasoning || null,
-      caution: structured.relevance.caution || null,
     },
     suggestedQuestionSeeds: structured.suggestedQuestions.slice(0, 4),
     methodology: {

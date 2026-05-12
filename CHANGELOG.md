@@ -52,6 +52,43 @@ All notable product and engineering changes should be tracked here.
 - title field populated with filename (no extension) on file select — instant, no network call
 - submit button copy: "Uploading & extracting text…" instead of "Uploading file…"
 
+## 2026-05-12
+
+### Document Analysis — Editorial Model Swap
+- Pass 2 editorial primary model changed from `google/gemini-2.5-flash` to `anthropic/claude-3.5-haiku`
+- Pass 2 editorial backup model changed from `anthropic/claude-3.5-haiku` to `google/gemini-2.5-flash`
+- Gemini was timing out on editorial synthesis; Haiku succeeds faster and more reliably
+- env overrides still work: `OPENROUTER_EDITORIAL_MODEL`, `OPENROUTER_EDITORIAL_BACKUP_MODEL`
+
+### Document Analysis — Pass 1 Schema Diet
+- removed 22 fields from Pass 1 structured extraction schema that were never surfaced to the user or editorial handoff
+- findings: removed `sourceContext`, `effectDirection` (kept `sourceText`, `finding`, `plainMeaning`, `populationOrSample`, `supportLevel`)
+- limitations: removed `severity`, `practicalConsequence`, `whatWouldStrengthenIt` (kept `limitation`, `whyItMatters`)
+- removed entire `methodologicalConcerns` array
+- misreadings: removed `whyTheDistinctionMatters` (kept `misleadingClaim`, `whatThePaperSupports`)
+- relevance: removed `actionability`, `actionabilityReasoning`, `caution` (kept `whyItMatters`, `practicalMeaning`)
+- evidenceSignals: collapsed from 9 fields to 3 (`studyType`, `sampleSize`, `controls`)
+- methodologySnapshot: collapsed from 6 fields to 3 (`design`, `numberOfStudiesOrParticipants`, `analysisMethod`)
+- keyTerms: removed `simpleEnglish` (kept `term`)
+- missingInfo: removed `whyItMatters` (kept `item`)
+- all downstream normalizers updated to provide stable defaults for the `NormalizedAnalysis` internal type
+- frontend rendering unchanged — removed fields were never shown to users
+- expected Pass 1 output token reduction: ~30-35%
+
+### Document Analysis — Editorial Retry Fix
+- removed same-model retry: editorial now tries primary → backup (was primary → retry → backup)
+- saves ~60s when primary model fails (no point retrying the same model)
+- same fix applied to search synthesis
+- added structured logs: `Editorial attempt start/failed/succeeded` with model, timeoutMs, attemptMs, errorName
+
+### Document Analysis — PDF Conversion
+- removed pre-upload PDF title extraction (`/extract-title` no longer called on file select)
+- file select now sets title to filename instantly instead of running full PDF→markdown conversion (~18s saved)
+- added external PDF-to-Markdown microservice support behind `USE_EXTERNAL_PDF_MD_SERVICE=true`
+- external service reduces conversion from ~105s to ~14s on production
+- pymupdf4llm optimized: `ignore_images=True`, `ignore_graphics=True`, `detect_bg_color=False`
+- upload route logs filename, fileSizeKb, conversionMs, extractTotalMs, converter (external/local)
+
 ## 2026-05-10
 
 ### Reader UX

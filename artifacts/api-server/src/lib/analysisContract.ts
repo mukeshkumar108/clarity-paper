@@ -76,9 +76,7 @@ const llmWhatShowsSchema = z
 
 const llmKeyFindingSchema = z.object({
   finding: maybeString,
-  sourceInPaper: maybeString,
   populationOrSample: maybeString,
-  effectDirection: maybeString,
   strengthOfSupport: z.enum(findingSupportValues).optional(),
   plainEnglishMeaning: maybeString,
   sourceText: z.string().trim().optional().nullable(),
@@ -88,29 +86,19 @@ const llmEvidenceQualitySchema = z
   .object({
     studyType: maybeString,
     sampleSize: maybeString,
-    controlsOrComparisonGroups: maybeString,
-    statisticalDetail: maybeString,
-    effectSizes: maybeString,
-    replication: maybeString,
-    publicationBiasRisk: maybeString,
-    fundingConflictVisibility: maybeString,
-    generalisability: maybeString,
+    controls: maybeString,
   })
   .optional()
   .default({});
 
 const llmLimitationSchema = z.object({
-  severity: z.enum(limitationSeverityValues).optional(),
   limitation: maybeString,
   whyItMatters: maybeString,
-  practicalConsequence: maybeString,
-  whatWouldStrengthenIt: maybeString,
 });
 
 const llmMisreadingSchema = z.object({
   misleadingClaim: maybeString,
   whatThePaperSupports: maybeString,
-  whyTheDistinctionMatters: maybeString,
 });
 
 const llmRealWorldMeaningSchema = z
@@ -157,23 +145,18 @@ const llmFurtherReadingSchema = z
 const llmMethodologySnapshotSchema = z
   .object({
     design: maybeString,
-    searchSource: maybeString,
-    inclusionExclusionCriteria: maybeString,
     numberOfStudiesOrParticipants: maybeString,
     analysisMethod: maybeString,
-    prismaMetaAnalysisStatistics: maybeString,
   })
   .optional()
   .default({});
 
 const llmKeyTermSchema = z.object({
   term: maybeString,
-  simpleEnglish: maybeString,
 });
 
 const llmMissingInfoSchema = z.object({
   item: maybeString,
-  whyItMatters: maybeString,
 });
 
 export const structuredAnalysisSchema = z.object({
@@ -198,9 +181,7 @@ export const structuredAnalysisSchema = z.object({
     .array(
       z.object({
         finding: maybeString,
-        sourceContext: maybeString,
         populationOrSample: maybeString,
-        effectDirection: maybeString,
         supportLevel: z.enum(findingSupportValues).optional(),
         plainMeaning: maybeString,
         sourceText: z.string().trim().optional().nullable(),
@@ -212,12 +193,6 @@ export const structuredAnalysisSchema = z.object({
     studyType: maybeString,
     sampleSize: maybeString,
     controls: maybeString,
-    statisticalDetail: maybeString,
-    effectSizes: maybeString,
-    replication: maybeString,
-    publicationBiasRisk: maybeString,
-    fundingVisibility: maybeString,
-    generalisability: maybeString,
   }),
   trust: z.object({
     rating: z.enum(trustRatingValues).optional(),
@@ -229,23 +204,18 @@ export const structuredAnalysisSchema = z.object({
   limitations: z
     .array(
       z.object({
-        severity: z.enum(limitationSeverityValues).optional(),
         limitation: maybeString,
         whyItMatters: maybeString,
-        practicalConsequence: maybeString,
-        whatWouldStrengthenIt: maybeString,
       }),
     )
     .optional()
     .default([]),
-  methodologicalConcerns: stringArray,
   nonClaims: stringArray,
   misreadings: z
     .array(
       z.object({
         misleadingClaim: maybeString,
         whatThePaperSupports: maybeString,
-        whyTheDistinctionMatters: maybeString,
       }),
     )
     .optional()
@@ -254,9 +224,6 @@ export const structuredAnalysisSchema = z.object({
   relevance: z.object({
     whyItMatters: maybeString,
     practicalMeaning: maybeString,
-    actionability: z.enum(actionabilityValues).optional(),
-    actionabilityReasoning: maybeString,
-    caution: maybeString,
   }),
   methodologySnapshot: llmMethodologySnapshotSchema,
   keyTerms: z.array(llmKeyTermSchema).optional().default([]),
@@ -626,9 +593,9 @@ export function buildAnalysisFromPasses(
     whatItDoesNotShow: structured.nonClaims,
     keyFindings: structured.findings.map((item) => ({
       finding: item.finding,
-      sourceInPaper: item.sourceContext,
+      sourceInPaper: "",
       populationOrSample: item.populationOrSample,
-      effectDirection: item.effectDirection,
+      effectDirection: "",
       strengthOfSupport: item.supportLevel,
       plainEnglishMeaning: item.plainMeaning,
       sourceText: item.sourceText,
@@ -637,15 +604,25 @@ export function buildAnalysisFromPasses(
       studyType: structured.evidenceSignals.studyType,
       sampleSize: structured.evidenceSignals.sampleSize,
       controlsOrComparisonGroups: structured.evidenceSignals.controls,
-      statisticalDetail: structured.evidenceSignals.statisticalDetail,
-      effectSizes: structured.evidenceSignals.effectSizes,
-      replication: structured.evidenceSignals.replication,
-      publicationBiasRisk: structured.evidenceSignals.publicationBiasRisk,
-      fundingConflictVisibility: structured.evidenceSignals.fundingVisibility,
-      generalisability: structured.evidenceSignals.generalisability,
+      statisticalDetail: "",
+      effectSizes: "",
+      replication: "",
+      publicationBiasRisk: "",
+      fundingConflictVisibility: "",
+      generalisability: "",
     },
-    limitationsAndGotchas: structured.limitations,
-    commonMisreadings: structured.misreadings,
+    limitationsAndGotchas: structured.limitations.map((item) => ({
+      severity: "Important limitation" as const,
+      limitation: item.limitation,
+      whyItMatters: item.whyItMatters,
+      practicalConsequence: "",
+      whatWouldStrengthenIt: "",
+    })),
+    commonMisreadings: structured.misreadings.map((item) => ({
+      misleadingClaim: item.misleadingClaim,
+      whatThePaperSupports: item.whatThePaperSupports,
+      whyTheDistinctionMatters: "",
+    })),
     realWorldMeaning: {
       summary: effectiveEditorial.orientation || structured.relevance.whyItMatters,
       sensibleInterpretation: effectiveEditorial.trustNarrative,
@@ -653,9 +630,9 @@ export function buildAnalysisFromPasses(
       citationGuidance: structured.trust.citationUse,
     },
     practicalUse: {
-      recommendation: structured.relevance.actionability,
-      reasoning: structured.relevance.actionabilityReasoning,
-      caution: structured.relevance.caution,
+      recommendation: undefined,
+      reasoning: "",
+      caution: "",
     },
     questionsToAskBeforeTrustingIt: dedupeStrings([
       ...structured.suggestedQuestions,
@@ -939,9 +916,6 @@ function synthesizeTechnicalCuriousBody(structured: StructuredAnalysisDraft): st
     cleanText(structured.methodologySnapshot.design),
     cleanText(structured.evidenceSignals.sampleSize),
     cleanText(structured.evidenceSignals.controls),
-    cleanText(structured.evidenceSignals.statisticalDetail),
-    cleanText(structured.evidenceSignals.effectSizes),
-    cleanText(structured.evidenceSignals.replication),
     cleanText(structured.limitations[0]?.limitation),
   ].some(Boolean);
 
@@ -950,17 +924,11 @@ function synthesizeTechnicalCuriousBody(structured: StructuredAnalysisDraft): st
   }
 
   const sample = cleanText(structured.evidenceSignals.sampleSize);
-  const stats = cleanText(structured.evidenceSignals.statisticalDetail);
-  const effects = cleanText(structured.evidenceSignals.effectSizes);
-  const replication = cleanText(structured.evidenceSignals.replication);
   const limitation = cleanText(structured.limitations[0]?.whyItMatters) || cleanText(structured.limitations[0]?.limitation);
 
   return [
     cleanText(structured.methodologySnapshot.design) || cleanText(structured.study.type),
     sample ? `The sample context is ${sample}.` : "",
-    stats ? `The paper reports the analysis as ${lowercaseFirst(stats.replace(/\.$/, ""))}.` : "",
-    effects ? `Effect size detail is described as ${lowercaseFirst(effects.replace(/\.$/, ""))}.` : "",
-    replication ? `On replication, the paper points to ${lowercaseFirst(replication.replace(/\.$/, ""))}.` : "",
     limitation ? `The main technical constraint is ${lowercaseFirst(limitation.replace(/\.$/, ""))}.` : "",
   ]
     .filter(Boolean)
@@ -1251,9 +1219,9 @@ function normalizeKeyFindings(
   const cleaned = findings
     .map((item) => ({
       finding: cleanText(item.finding),
-      sourceInPaper: cleanText(item.sourceInPaper) || MISSING,
+      sourceInPaper: "",
       populationOrSample: cleanText(item.populationOrSample) || whatShows.population,
-      effectDirection: cleanText(item.effectDirection) || cleanText(whatShows.observedResult) || MISSING,
+      effectDirection: "",
       strengthOfSupport: item.strengthOfSupport ?? trustRatingToSupport(trustRating.rating),
       plainEnglishMeaning: cleanText(item.plainEnglishMeaning) || cleanText(item.finding) || MISSING,
       sourceText: item.sourceText?.trim() || null,
@@ -1269,7 +1237,7 @@ function normalizeKeyFindings(
       finding: cleanText(whatShows.observedResult) || "Main reported result",
       sourceInPaper: MISSING,
       populationOrSample: whatShows.population,
-      effectDirection: whatShows.observedResult,
+      effectDirection: MISSING,
       strengthOfSupport: trustRatingToSupport(trustRating.rating),
       plainEnglishMeaning: whatShows.observedResult,
       sourceText: null,
@@ -1286,13 +1254,13 @@ function normalizeEvidenceQuality(
   return {
     studyType,
     sampleSize: fallbackText(input?.sampleSize, detectSampleSize(text), MISSING),
-    controlsOrComparisonGroups: fallbackText(input?.controlsOrComparisonGroups, detectControls(text), MISSING),
-    statisticalDetail: fallbackText(input?.statisticalDetail, detectStatisticalDetail(text), MISSING),
-    effectSizes: fallbackText(input?.effectSizes, detectEffectSizes(text), MISSING),
-    replication: fallbackText(input?.replication, detectReplication(text), MISSING),
-    publicationBiasRisk: fallbackText(input?.publicationBiasRisk, inferPublicationBiasRisk(studyType), MISSING),
-    fundingConflictVisibility: fallbackText(input?.fundingConflictVisibility, detectFundingVisibility(text), MISSING),
-    generalisability: fallbackText(input?.generalisability, inferGeneralisability(text), MISSING),
+    controlsOrComparisonGroups: fallbackText(input?.controls, detectControls(text), MISSING),
+    statisticalDetail: MISSING,
+    effectSizes: MISSING,
+    replication: MISSING,
+    publicationBiasRisk: inferPublicationBiasRisk(studyType),
+    fundingConflictVisibility: MISSING,
+    generalisability: MISSING,
   };
 }
 
@@ -1303,11 +1271,11 @@ function normalizeLimitations(
 ): NormalizedAnalysis["limitationsAndGotchas"] {
   const cleaned = input
     .map((item) => ({
-      severity: item.severity ?? inferLimitationSeverity(item.limitation, item.whyItMatters),
+      severity: inferLimitationSeverity(item.limitation, item.whyItMatters),
       limitation: cleanText(item.limitation),
       whyItMatters: cleanText(item.whyItMatters),
-      practicalConsequence: cleanText(item.practicalConsequence),
-      whatWouldStrengthenIt: cleanText(item.whatWouldStrengthenIt),
+      practicalConsequence: "",
+      whatWouldStrengthenIt: "",
     }))
     .filter((item) => item.limitation && item.whyItMatters);
 
@@ -1418,9 +1386,9 @@ function normalizeMisreadings(
     .map((item) => ({
       misleadingClaim: cleanText(item.misleadingClaim),
       whatThePaperSupports: cleanText(item.whatThePaperSupports),
-      whyTheDistinctionMatters: cleanText(item.whyTheDistinctionMatters),
+      whyTheDistinctionMatters: "",
     }))
-    .filter((item) => item.misleadingClaim && item.whatThePaperSupports && item.whyTheDistinctionMatters);
+    .filter((item) => item.misleadingClaim && item.whatThePaperSupports);
 
   const derived: NormalizedAnalysis["commonMisreadings"] = [];
   if (whatShows.claimType !== "causal") {
@@ -1676,11 +1644,11 @@ function normalizeMethodologySnapshot(
 ): NormalizedAnalysis["methodologySnapshot"] {
   return {
     design: fallbackText(input?.design, evidenceQuality.studyType, documentType || MISSING),
-    searchSource: fallbackText(input?.searchSource, MISSING),
-    inclusionExclusionCriteria: fallbackText(input?.inclusionExclusionCriteria, MISSING),
+    searchSource: MISSING,
+    inclusionExclusionCriteria: MISSING,
     numberOfStudiesOrParticipants: fallbackText(input?.numberOfStudiesOrParticipants, evidenceQuality.sampleSize, MISSING),
-    analysisMethod: fallbackText(input?.analysisMethod, evidenceQuality.statisticalDetail, MISSING),
-    prismaMetaAnalysisStatistics: fallbackText(input?.prismaMetaAnalysisStatistics, inferPrismaOrStats(evidenceQuality.studyType), MISSING),
+    analysisMethod: fallbackText(input?.analysisMethod, MISSING),
+    prismaMetaAnalysisStatistics: inferPrismaOrStats(evidenceQuality.studyType),
   };
 }
 
@@ -1688,9 +1656,9 @@ function normalizeKeyTerms(input: LlmAnalysisDraft["keyTerms"]): NormalizedAnaly
   const cleaned = input
     .map((item) => ({
       term: cleanText(item.term),
-      simpleEnglish: cleanText(item.simpleEnglish),
+      simpleEnglish: "",
     }))
-    .filter((item) => item.term && item.simpleEnglish);
+    .filter((item) => item.term);
 
   return cleaned.slice(0, 8);
 }
@@ -1703,9 +1671,9 @@ function normalizeMissingInfo(
   const cleaned = input
     .map((item) => ({
       item: cleanText(item.item),
-      whyItMatters: cleanText(item.whyItMatters),
+      whyItMatters: "",
     }))
-    .filter((item) => item.item && item.whyItMatters);
+    .filter((item) => item.item);
 
   const derived: Array<{ item: string; whyItMatters: string }> = [];
   if (evidenceQuality.fundingConflictVisibility === MISSING && hasExplicitMissingFundingInfo(text)) {
@@ -1853,8 +1821,9 @@ function deriveTrustRating(
 ): NormalizedAnalysis["trustRating"]["rating"] {
   const studyType = evidenceQuality.studyType.toLowerCase();
   const limitationsText = limitations.map((item) => `${item.limitation} ${item.whyItMatters}`).join(" ").toLowerCase();
-  const majorLimitations = limitations.filter((item) => item.severity === "Major limitation").length;
-  const importantLimitations = limitations.filter((item) => item.severity === "Important limitation").length;
+  const inferred = limitations.map((item) => inferLimitationSeverity(item.limitation, item.whyItMatters));
+  const majorLimitations = inferred.filter((s) => s === "Major limitation").length;
+  const importantLimitations = inferred.filter((s) => s === "Important limitation").length;
 
   if (/conceptual|opinion|essay|commentary|theoretical/.test(studyType)) {
     return "Weak evidence";
@@ -1986,9 +1955,7 @@ function deriveConfidenceLevel(
   let score = 0;
   if (evidenceQuality.sampleSize !== MISSING) score += 1;
   if (evidenceQuality.controlsOrComparisonGroups !== MISSING) score += 1;
-  if (evidenceQuality.effectSizes !== MISSING) score += 1;
-  if (evidenceQuality.fundingConflictVisibility !== MISSING) score += 1;
-  score -= limitations.filter((item) => item.severity === "Major limitation").length;
+  score -= limitations.filter((item) => inferLimitationSeverity(item.limitation, item.whyItMatters) === "Major limitation").length;
   if (score >= 3) return "high";
   if (score >= 1) return "medium";
   return "low";

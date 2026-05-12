@@ -68,7 +68,7 @@ human language at the appropriate depth for each section.
 | Pass | Model | Purpose |
 |------|-------|---------|
 | Pass 1 | `OPENROUTER_STRUCTURED_MODEL` (default: `google/gemini-2.5-flash`) | Structured extraction, schema adherence |
-| Pass 2 | `OPENROUTER_EDITORIAL_MODEL` (default: `google/gemini-2.5-flash`) | Editorial synthesis, human voice |
+| Pass 2 | `OPENROUTER_EDITORIAL_MODEL` (default: `anthropic/claude-3.5-haiku`) | Editorial synthesis, human voice |
 
 Do not swap these models without explicit instruction. Model 
 selection was validated through testing multiple alternatives. 
