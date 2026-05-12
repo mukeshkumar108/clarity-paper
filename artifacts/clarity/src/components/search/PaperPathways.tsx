@@ -110,14 +110,17 @@ export function PaperPathways({ papers }: PaperPathwaysProps) {
                 {group.description}
               </p>
               <div className="space-y-4">
-                {groupPapers.map((paper) => {
+                {groupPapers.map((paper, groupIndex) => {
                   const idx = globalIndex++;
+                  // Only show framing on first 2 papers of "start" group
+                  const showFraming = group.key === "start" && groupIndex < 2;
                   return (
                     <PaperCard
                       key={paper.externalId}
                       paper={paper}
                       index={idx}
                       displayGroup={group.key}
+                      showFraming={showFraming}
                     />
                   );
                 })}
@@ -141,14 +144,17 @@ export function PaperPathways({ papers }: PaperPathwaysProps) {
             The clearest papers for getting oriented quickly.
           </p>
           <div className="space-y-4">
-            {startPapers.slice(0, initialPaperCount).map((paper) => {
+            {startPapers.slice(0, initialPaperCount).map((paper, groupIndex) => {
               const idx = globalIndex++;
+              // Only show framing on first 2 papers
+              const showFraming = groupIndex < 2;
               return (
                 <PaperCard
                   key={paper.externalId}
                   paper={paper}
                   index={idx}
                   displayGroup="start"
+                  showFraming={showFraming}
                 />
               );
             })}

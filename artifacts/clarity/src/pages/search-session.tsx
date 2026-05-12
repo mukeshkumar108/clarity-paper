@@ -159,9 +159,9 @@ export default function SearchSessionPage({ id }: { id: string }) {
                 />
               </div>
 
-              {/* Right column: Paper pathways */}
-              <div className="min-w-0 xl:border-l xl:border-pebble-gray/50 xl:pl-8">
-                <div className="sticky top-6">
+              {/* Right column: Paper pathways - independently scrollable */}
+              <div className="min-w-0 xl:border-l xl:border-pebble-gray/50 xl:pl-8 xl:h-[calc(100vh-200px)] xl:overflow-y-auto">
+                <div className="xl:sticky xl:top-0 pb-6">
                   <PaperPathways papers={data.papers} />
                 </div>
               </div>

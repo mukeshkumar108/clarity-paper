@@ -1,33 +1,41 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import type { SearchResult, SearchSessionMessage } from "@/lib/search-types";
 import { SynthesisAnswer } from "./SynthesisAnswer";
 import { SynthesisSkeleton } from "./SynthesisSkeleton";
 import { EvidenceBehindRead } from "./EvidenceBehindRead";
 import { FollowUpOptions } from "./FollowUpOptions";
 import { MainRefineInput } from "./MainRefineInput";
-import { ResearchTrail } from "./ResearchTrail";
+import { ChatMessage } from "./ChatMessage";
+import { User, Bot } from "lucide-react";
 
 interface SearchResultsProps {
   result: SearchResult;
-  messages?: SearchSessionMessage[];
+  messages: SearchSessionMessage[];
   onFollowUp: (query: string) => void;
   onRefine?: (content: string) => Promise<void>;
   isRefining?: boolean;
-  /** When true, papers are shown but synthesis is still loading — show skeleton */
   synthesisLoading?: boolean;
 }
 
 export function SearchResults({ 
   result, 
-  messages = [],
+  messages,
   onFollowUp, 
   onRefine,
   isRefining = false,
   synthesisLoading = false 
 }: SearchResultsProps) {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [localInput, setLocalInput] = useState("");
+
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, result.synthesisText]);
+
   return (
-    <div className="space-y-8">
-      {/* 1. First Read / Synthesis */}
+    <div className="space-y-6">
+      {/* Initial First Read - always at top */}
       <section>
         {synthesisLoading ? (
           <div className="space-y-4">
@@ -39,55 +47,64 @@ export function SearchResults({
             <SynthesisSkeleton />
           </div>
         ) : (
-          <div className="space-y-4">
-            <SynthesisAnswer
-              synthesisText={result.synthesisText}
-              confidence={result.confidence}
-              noEvidence={result.noEvidence}
-              query={result.query}
-              coverageNote={result.coverageNote}
-            />
+          <div className="flex gap-3">
+            <div className="shrink-0 w-8 h-8 rounded-full bg-onyx-outline/10 flex items-center justify-center">
+              <Bot className="w-4 h-4 text-onyx-outline" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-4">
+              <div className="bg-white/60 border border-pebble-gray/70 rounded-2xl px-4 py-3">
+                <SynthesisAnswer
+                  synthesisText={result.synthesisText}
+                  confidence={result.confidence}
+                  noEvidence={result.noEvidence}
+                  query={result.query}
+                  coverageNote={result.coverageNote}
+                />
+              </div>
+              
+              {/* Evidence behind this read */}
+              <EvidenceBehindRead 
+                snapshot={result.evidenceSnapshot} 
+                spans={result.evidenceSpans}
+                coverageNote={result.coverageNote}
+              />
+
+              {/* Follow-up chips */}
+              {result.followUpOptions.length > 0 && (
+                <FollowUpOptions
+                  options={result.followUpOptions}
+                  onSelect={onFollowUp}
+                />
+              )}
+            </div>
           </div>
         )}
       </section>
 
-      {/* 2. Evidence behind this read */}
-      {!synthesisLoading && (
-        <section>
-          <EvidenceBehindRead 
-            snapshot={result.evidenceSnapshot} 
-            spans={result.evidenceSpans}
-            coverageNote={result.coverageNote}
-          />
+      {/* Chat thread - stacked turns */}
+      {messages.length > 0 && (
+        <section className="space-y-6 border-t border-pebble-gray/30 pt-6">
+          {messages.map((message, index) => {
+            // Skip system messages or render them specially
+            if (message.kind === "system") return null;
+            
+            return (
+              <ChatMessage 
+                key={`${message.id}-${index}`} 
+                message={message} 
+              />
+            );
+          })}
+          <div ref={messagesEndRef} />
         </section>
       )}
 
-      {/* 3. Follow-up question chips */}
-      {!synthesisLoading && result.followUpOptions.length > 0 && (
-        <section>
-          <FollowUpOptions
-            options={result.followUpOptions}
-            onSelect={onFollowUp}
-          />
-        </section>
-      )}
-
-      {/* 4. Main ask/refine input */}
+      {/* Input area */}
       {!synthesisLoading && onRefine && (
-        <section>
+        <section className="border-t border-pebble-gray/30 pt-6">
           <MainRefineInput 
             onSubmit={onRefine}
             isSubmitting={isRefining}
-          />
-        </section>
-      )}
-
-      {/* 5. Exploration trail / history */}
-      {!synthesisLoading && messages.length > 0 && (
-        <section>
-          <ResearchTrail 
-            messages={messages} 
-            originalQuery={result.query}
           />
         </section>
       )}

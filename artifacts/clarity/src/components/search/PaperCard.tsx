@@ -61,6 +61,8 @@ interface PaperCardProps {
   paper: RankedPaper;
   index: number;
   displayGroup: "start" | "background" | "early" | "messy";
+  /** Whether to show framing copy (eyebrow + whyItMatters). Only true for first 1-2 papers. */
+  showFraming?: boolean;
 }
 
 const GROUP_INTRO: Record<
@@ -85,7 +87,7 @@ const GROUP_INTRO: Record<
   },
 };
 
-export function PaperCard({ paper, index, displayGroup }: PaperCardProps) {
+export function PaperCard({ paper, index, displayGroup, showFraming = false }: PaperCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [analysing, setAnalysing] = useState(false);
   const [, navigate] = useLocation();
@@ -135,14 +137,20 @@ export function PaperCard({ paper, index, displayGroup }: PaperCardProps) {
         {/* Header row */}
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="min-w-0 space-y-1">
-            <div className="flex items-center gap-2 shrink-0">
+            {showFraming ? (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] font-medium text-muted-stone/60 w-5">
+                  {index + 1}
+                </span>
+                <span className="text-[11px] font-medium text-muted-stone">
+                  {intro.eyebrow}
+                </span>
+              </div>
+            ) : (
               <span className="text-[11px] font-medium text-muted-stone/60 w-5">
                 {index + 1}
               </span>
-              <span className="text-[11px] font-medium text-muted-stone">
-                {intro.eyebrow}
-              </span>
-            </div>
+            )}
             <span
               className={cn(
                 "inline-flex text-[10px] font-semibold uppercase tracking-[0.14em] px-2 py-0.5 rounded border w-fit",
@@ -176,9 +184,11 @@ export function PaperCard({ paper, index, displayGroup }: PaperCardProps) {
           </p>
         )}
 
-        <p className="text-[13px] text-muted-stone leading-relaxed mb-2">
-          {intro.whyItMatters}
-        </p>
+        {showFraming && (
+          <p className="text-[13px] text-muted-stone leading-relaxed mb-2">
+            {intro.whyItMatters}
+          </p>
+        )}
 
         {/* Plain summary */}
         <p className="text-[14px] text-inkwell/80 leading-relaxed mb-4">

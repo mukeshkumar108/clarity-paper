@@ -19,15 +19,14 @@ export function FollowUpOptions({ options, onSelect }: FollowUpOptionsProps) {
           You could take this in a few directions.
         </p>
       </div>
-      <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
         {options.map((option) => (
           <button
             key={option}
             onClick={() => onSelect(option)}
-            className="group w-full text-left flex items-center gap-3 rounded-xl border border-pebble-gray bg-white/60 px-4 py-3 hover:border-onyx-outline/40 hover:bg-white transition-all"
+            className="group rounded-full border border-pebble-gray/60 bg-transparent px-4 py-2 hover:border-onyx-outline/40 hover:bg-onyx-outline/5 transition-all"
           >
-            <ArrowRight className="w-4 h-4 text-muted-stone/50 shrink-0 group-hover:text-onyx-outline group-hover:translate-x-0.5 transition-all" />
-            <span className="text-[14px] text-deep-shadow/80 group-hover:text-deep-shadow transition-colors leading-snug">
+            <span className="text-[13px] text-deep-shadow/80 group-hover:text-deep-shadow transition-colors leading-snug">
               {option}
             </span>
           </button>
