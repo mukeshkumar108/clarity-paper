@@ -2,6 +2,95 @@
 
 All notable product and engineering changes should be tracked here.
 
+## 2026-05-12
+
+### Search — UX Restructure: Conversational Research Flow
+
+**Goal:** Move from "evidence canvas + persistent sidebar" toward "conversational research flow grounded in structured evidence artifacts."
+
+This is not a generic chat thread. This is a trust-first exploration surface where evidence is the anchor, not a footnote.
+
+#### New Component Hierarchy
+
+**New page structure (top to bottom):**
+1. Query/session heading
+2. Compact current focus strip
+3. First Read / current understanding
+4. **Evidence behind this read** (NEW — trust anchor)
+5. Follow-up question chips
+6. Main ask/refine input (NEW — in-flow, not sidebar)
+7. Recommended papers / paper pathways (2-3 initially, progressively disclosed)
+8. Show more papers control
+9. Exploration trail / history (NEW)
+
+#### New Components Created
+
+- **`EvidenceBehindRead.tsx`** — Groups `EvidenceSnapshot` and `EvidencePanel` into a cohesive trust section. Shows paper counts, evidence shape (meta-analyses, RCTs, etc.), curated-set transparency, and expandable claim-level provenance.
+- **`MainRefineInput.tsx`** — Primary refinement input positioned in the main flow, after follow-up chips. Submits to existing sidebar orchestration endpoint.
+- **`ResearchTrail.tsx`** — Collapsed timeline showing exploration history: started with query, refined to X, asked Y, focused retrieval, etc. Display-only (no branching/restore).
+
+#### Modified Components
+
+- **`SearchResults.tsx`** — Complete restructure. New order: Synthesis → EvidenceBehindRead → FollowUpOptions → MainRefineInput → Paper pathways (2-3 initially) → ResearchTrail. Papers progressively disclosed with "Show more" control.
+- **`ExplorationSidebar.tsx`** — Converted to **drawer pattern**. Now accepts `isOpen`/`onClose` props. Renders as overlay drawer when toggled, not persistent rail. Backdrop click closes. Toggle button appears in header when messages exist.
+- **`search-session.tsx`** — Layout changed from grid (canvas + sidebar) to single-column centered flow (max-w-3xl). Header includes drawer toggle button. Main content area contains all components in conversational order.
+
+#### Key UX Changes
+
+**Evidence positioning:**
+- Evidence section now appears **immediately after First Read**, not at the bottom
+- Evidence is the trust anchor, not a footnote
+- Softer copy: "We checked this first read against X papers. This is a curated starting set, not a full literature sweep."
+- Claim-level provenance collapsed by default under "Inspect the claims" toggle
+
+**Paper display:**
+- Only **2-3 papers shown initially** (from "Where I'd start" group)
+- "Show more papers" button reveals remaining papers + all groups
+- Paper cards remain first-class objects (not citations)
+- Progressive disclosure respects cognitive load
+
+**Refinement input:**
+- Moved from persistent sidebar to **main flow**
+- Positioned after follow-up chips, before papers
+- Uses same backend endpoint (`/api/search/sessions/:id/messages`)
+- Same action model: `answer_current_results`, `refine_current_canvas`, `focused_retrieval_expansion`, `clarification_prompt`, `exhaustive_intent_transparency`
+
+**Sidebar/drawer:**
+- No longer dominates layout as persistent rail
+- Accessible via "History" toggle button in header
+- Shows full message history and refinement input
+- Maintains all existing functionality
+
+**Research trail:**
+- Collapsed timeline of exploration steps
+- Shows: started with query, refined to X, asked Y, etc.
+- Display-only (no click-to-restore in this phase)
+
+#### What Didn't Change
+
+- **Zero backend changes** — same retrieval, ranking, synthesis, orchestration
+- **No prompt changes** — editorial voice unchanged
+- **No API contract changes** — same endpoints, same payloads
+- **Evidence span engine unchanged** — same grounding safety
+- **Paper card design unchanged** — same functionality
+- **Sidebar orchestration logic unchanged** — same action types and guardrails
+
+#### Files Changed
+
+**New files:**
+- `artifacts/clarity/src/components/search/EvidenceBehindRead.tsx`
+- `artifacts/clarity/src/components/search/MainRefineInput.tsx`
+- `artifacts/clarity/src/components/search/ResearchTrail.tsx`
+
+**Modified files:**
+- `artifacts/clarity/src/components/search/SearchResults.tsx`
+- `artifacts/clarity/src/components/search/ExplorationSidebar.tsx`
+- `artifacts/clarity/src/pages/search-session.tsx`
+
+**Documentation updated:**
+- `AGENTS.md` — updated Current State section
+- `ARCHITECTURE.md` — updated Frontend Components and Search Session Workspace sections
+
 ## 2026-05-11
 
 ### Document Analysis — Upload/Analyse Reliability

@@ -190,7 +190,7 @@ Specific things that signal bad output:
 
 ---
 
-## Current State (as of 2026-05-11)
+## Current State (as of 2026-05-12)
 
 **Document Analysis — Working:**
 - Two-pass pipeline end to end
@@ -230,15 +230,21 @@ Specific things that signal bad output:
 - Coverage note: `abstracts_only` always returned and shown in UI
 - Unpaywall enrichment (open-access PDF links, parallel with synthesis)
 - EvidencePanel UI: expandable claim rows with verbatim snippets + DOI links
-- SearchResults reshaped around first read → paper pathways → follow-up questions → subordinate evidence/provenance
-- Curated-transparency copy in SearchResults: positioned as a useful starting set, not an exhaustive literature review
+- **SearchResults restructured (2026-05-12): moved from "evidence canvas + persistent sidebar" to "conversational research flow"**
+  - New hierarchy: First read → Evidence behind this read → Follow-up chips → Main refine input → Paper pathways (progressive disclosure)
+  - `EvidenceBehindRead` component groups evidence shape and claim-level provenance in one cohesive section
+  - Evidence section appears immediately after First Read as the trust anchor
+  - Only 2-3 papers shown initially with "Show more" control
+  - Main refinement input moved into flow (not persistent sidebar)
+  - `ResearchTrail` component preserves exploration history as collapsed timeline
 - Paper pathways grouping in SearchResults using existing metadata only:
   `Where I'd start / Useful background / Early or adjacent / Where the story gets messy`
 - Paper cards reframed as invitations into the explainer flow rather than database rows
 - `/search` now acts as the entry surface for new explorations, while `/search/:sessionId` is a persistent exploration workspace
 - Search sessions now persist structured sidebar messages in `search_session_messages`
 - A current-focus strip summarizes the active refinement state of the canvas
-- A constrained conversational refinement sidebar can now:
+- `ExplorationSidebar` converted to drawer pattern — refinement history accessible via toggle, not persistent rail
+- A constrained conversational refinement layer can now:
   - answer about the current evidence without mutating the canvas
   - narrow the current canvas by reusing existing papers when possible
   - trigger focused retrieval when a new subtopic or intervention is introduced
@@ -260,6 +266,7 @@ Specific things that signal bad output:
 - Checkpoints / branchable exploration history
 - Deep-read escalation from sidebar into richer paper analysis
 - More semantic, planner-aware paper regrouping beyond the current presentation-layer remap
+- **Phase 3 considerations:** Inline response handling for `answer_current_results` and `clarification_prompt` actions (currently shown in ResearchTrail; could be elevated to inline bubbles near input)
 
 ---
 

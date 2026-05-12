@@ -139,14 +139,17 @@ This makes it possible to see when a search silently degraded to fewer upstream 
 | Component | Role |
 |-----------|------|
 | `SynthesisAnswer` | "First read" — synthesis text, confidence badge, coverage note |
-| `FollowUpOptions` | Suggested conversational next-step queries shown directly under the first read |
+| `EvidenceBehindRead` | Trust anchor section grouping evidence shape (counts) and claim-level provenance |
+| `EvidenceSnapshot` | Evidence-shape summary: meta-analyses, RCTs, observational, mechanistic, conflicting counts |
+| `EvidencePanel` | Claim-level provenance — expandable rows with verbatim abstract snippets and support labels |
+| `FollowUpOptions` | Suggested conversational next-step queries shown directly under the evidence section |
+| `MainRefineInput` | Primary refinement input in main flow, not sidebar — for asking follow-ups or narrowing scope |
 | `PaperCard` | Individual paper introduced as a pathway into understanding and into the explainer flow |
-| `EvidenceSnapshot` | Secondary evidence-shape summary: what kind of evidence was found in the curated starting set |
-| `EvidencePanel` | Subordinate claim-level provenance — expandable rows with verbatim abstract snippets |
+| `ResearchTrail` | Collapsed timeline showing exploration history and prior refinements |
 | `CurrentFocusStrip` | Compact summary of what the current canvas is optimized for and what changed most recently |
-| `ExplorationSidebar` | Conversational refinement rail attached to the current canvas; persists structured messages and operational updates |
+| `ExplorationSidebar` | **Drawer pattern** — conversational refinement history accessible via toggle, not persistent rail |
 
-**Order in `SearchResults.tsx`:** SynthesisAnswer → FollowUpOptions → grouped Paper cards → EvidenceSnapshot → collapsed EvidencePanel. The search surface now opens with orientation and paper pathways, while keeping evidence grounding visibly available but visually subordinate.
+**Order in `SearchResults.tsx`:** SynthesisAnswer → EvidenceBehindRead → FollowUpOptions → MainRefineInput → Paper pathways (2-3 initially, expandable) → ResearchTrail. The search surface now opens with orientation and evidence grounding, followed by natural conversational refinement, then paper pathways with progressive disclosure.
 
 ### Search Session Workspace
 
@@ -155,15 +158,18 @@ Search is no longer only a one-shot result page. The product now has two search 
 - `/search` — entry page for a new exploration
 - `/search/:sessionId` — persistent exploration workspace
 
-The session workspace keeps the scientific canvas primary:
+The session workspace uses a conversational research flow:
 
-1. current focus strip
-2. first read
-3. conversational follow-up options
-4. paper pathways
-5. subordinate evidence/provenance
+1. query/session heading
+2. current focus strip (compact)
+3. first read / current understanding
+4. **evidence behind this read** (trust anchor — evidence counts + inspectable claims)
+5. follow-up question chips
+6. main ask/refine input (in-flow, not sidebar)
+7. recommended papers / paper pathways (2-3 initially, progressively disclosed)
+8. exploration trail / history (collapsed timeline)
 
-Alongside that canvas, the sidebar acts as a constrained conversational refinement layer. It is not a generic chat surface. Its job is to help the user:
+The sidebar has been converted to a **drawer pattern** — accessible via toggle in the header, not a persistent visual rail. It is not a generic chat surface. Its job is to help the user:
 
 - ask about the current evidence without mutating the canvas
 - narrow the current paper set when lightweight filtering is enough

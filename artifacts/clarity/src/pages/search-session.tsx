@@ -1,12 +1,13 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/layouts/DashboardLayout";
 import { SearchResults } from "@/components/search/SearchResults";
 import { CurrentFocusStrip } from "@/components/search/CurrentFocusStrip";
 import { ExplorationSidebar } from "@/components/search/ExplorationSidebar";
-import { AlertCircle, Microscope } from "lucide-react";
+import { AlertCircle, Microscope, Menu } from "lucide-react";
 import type { SearchSessionDetail, SearchSessionMessage } from "@/lib/search-types";
+import { Button } from "@/components/ui/button";
 
 const sessionQueryKey = (sessionId: number) => ["search-session", sessionId];
 
@@ -52,10 +53,18 @@ export default function SearchSessionPage({ id }: { id: string }) {
   const sessionId = Number.parseInt(id, 10);
   const { data, isLoading, error } = useSearchSession(sessionId);
   const appendMessage = useAppendSessionMessage(sessionId);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  const handleSidebarSubmit = useCallback(
+  const handleRefine = useCallback(
     async (content: string) => {
       await appendMessage.mutateAsync(content);
+    },
+    [appendMessage],
+  );
+
+  const handleFollowUp = useCallback(
+    async (query: string) => {
+      await appendMessage.mutateAsync(query);
     },
     [appendMessage],
   );
@@ -78,21 +87,35 @@ export default function SearchSessionPage({ id }: { id: string }) {
 
   return (
     <DashboardLayout>
-      <div className="space-y-8">
-        <header className="space-y-2">
+      <div className="max-w-3xl mx-auto space-y-6">
+        {/* Header */}
+        <header className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-onyx-outline/8 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-onyx-outline/8 flex items-center justify-center shrink-0">
               <Microscope className="w-5 h-5 text-onyx-outline" />
             </div>
-            <div className="space-y-1">
-              <h1 className="text-[30px] font-semibold tracking-tight text-deep-shadow leading-none">
+            <div className="space-y-1 min-w-0">
+              <h1 className="text-[24px] font-semibold tracking-tight text-deep-shadow leading-tight">
                 {data?.query ?? "Exploration session"}
               </h1>
-              <p className="text-[14px] text-muted-stone leading-relaxed">
-                A persistent scientific canvas with an attached refinement rail.
+              <p className="text-[13px] text-muted-stone leading-relaxed">
+                A conversational exploration of the evidence.
               </p>
             </div>
           </div>
+          
+          {/* Drawer toggle button */}
+          {data && data.messages.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsDrawerOpen(true)}
+              className="shrink-0 flex items-center gap-2"
+            >
+              <Menu className="w-4 h-4" />
+              History
+            </Button>
+          )}
         </header>
 
         {isLoading && (
@@ -118,25 +141,32 @@ export default function SearchSessionPage({ id }: { id: string }) {
         )}
 
         {data && (
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="space-y-6 min-w-0">
-              <CurrentFocusStrip session={data} />
-              <SearchResults
-                result={data}
-                onFollowUp={handleSidebarSubmit}
-              />
-            </div>
-
-            <div className="min-w-0">
-              <ExplorationSidebar
-                messages={data.messages}
-                onSubmit={handleSidebarSubmit}
-                isSubmitting={appendMessage.isPending}
-              />
-            </div>
+          <div className="space-y-6">
+            {/* Current focus strip */}
+            <CurrentFocusStrip session={data} />
+            
+            {/* Search results with new hierarchy */}
+            <SearchResults
+              result={data}
+              messages={data.messages}
+              onFollowUp={handleFollowUp}
+              onRefine={handleRefine}
+              isRefining={appendMessage.isPending}
+            />
           </div>
         )}
       </div>
+
+      {/* Exploration sidebar as drawer */}
+      {data && (
+        <ExplorationSidebar
+          messages={data.messages}
+          onSubmit={handleRefine}
+          isSubmitting={appendMessage.isPending}
+          isOpen={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+        />
+      )}
     </DashboardLayout>
   );
 }
