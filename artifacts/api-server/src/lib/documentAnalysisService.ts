@@ -587,6 +587,23 @@ Improve the draft so it is clearer, more coherent, and more useful to a non-expe
   }
 }
 
+function stripEmpty(value: unknown): unknown {
+  if (value === null || value === undefined || value === "") return undefined;
+  if (Array.isArray(value)) {
+    const cleaned = value.map(stripEmpty).filter((v) => v !== undefined);
+    return cleaned.length === 0 ? undefined : cleaned;
+  }
+  if (typeof value === "object" && value !== null) {
+    const cleaned: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      const stripped = stripEmpty(v);
+      if (stripped !== undefined) cleaned[k] = stripped;
+    }
+    return Object.keys(cleaned).length === 0 ? undefined : cleaned;
+  }
+  return value;
+}
+
 function buildEditorialContext(structured: StructuredAnalysisDraft): string {
   const handoff = {
     paper: {
@@ -634,7 +651,7 @@ function buildEditorialContext(structured: StructuredAnalysisDraft): string {
     },
   };
 
-  return JSON.stringify(handoff, null, 2);
+  return JSON.stringify(stripEmpty(handoff), null, 2);
 }
 
 export async function answerDocumentQuestion(
