@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { DashboardLayout } from "@/components/layouts/DashboardLayout";
 import { SearchResults } from "@/components/search/SearchResults";
+import { PaperPathways } from "@/components/search/PaperPathways";
 import { CurrentFocusStrip } from "@/components/search/CurrentFocusStrip";
 import { ExplorationSidebar } from "@/components/search/ExplorationSidebar";
 import { AlertCircle, Microscope, Menu } from "lucide-react";
@@ -87,7 +88,7 @@ export default function SearchSessionPage({ id }: { id: string }) {
 
   return (
     <DashboardLayout>
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="space-y-6">
         {/* Header */}
         <header className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -142,17 +143,29 @@ export default function SearchSessionPage({ id }: { id: string }) {
 
         {data && (
           <div className="space-y-6">
-            {/* Current focus strip */}
+            {/* Current focus strip - full width */}
             <CurrentFocusStrip session={data} />
             
-            {/* Search results with new hierarchy */}
-            <SearchResults
-              result={data}
-              messages={data.messages}
-              onFollowUp={handleFollowUp}
-              onRefine={handleRefine}
-              isRefining={appendMessage.isPending}
-            />
+            {/* Two-column layout: Conversational flow left, Papers right */}
+            <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-8">
+              {/* Left column: Conversational flow */}
+              <div className="min-w-0">
+                <SearchResults
+                  result={data}
+                  messages={data.messages}
+                  onFollowUp={handleFollowUp}
+                  onRefine={handleRefine}
+                  isRefining={appendMessage.isPending}
+                />
+              </div>
+
+              {/* Right column: Paper pathways */}
+              <div className="min-w-0 xl:border-l xl:border-pebble-gray/50 xl:pl-8">
+                <div className="sticky top-6">
+                  <PaperPathways papers={data.papers} />
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>

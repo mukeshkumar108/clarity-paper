@@ -12,28 +12,33 @@ This is not a generic chat thread. This is a trust-first exploration surface whe
 
 #### New Component Hierarchy
 
-**New page structure (top to bottom):**
-1. Query/session heading
-2. Compact current focus strip
-3. First Read / current understanding
-4. **Evidence behind this read** (NEW — trust anchor)
-5. Follow-up question chips
-6. Main ask/refine input (NEW — in-flow, not sidebar)
-7. Recommended papers / paper pathways (2-3 initially, progressively disclosed)
-8. Show more papers control
-9. Exploration trail / history (NEW)
+**Two-column layout:**
+- **Left column (~60%)**: Conversational flow
+  1. First Read / current understanding
+  2. **Evidence behind this read** (NEW — trust anchor)
+  3. Follow-up question chips
+  4. Main ask/refine input (NEW — in-flow, not sidebar)
+  5. Exploration trail / history (NEW)
+- **Right column (~40%)**: Paper pathways sidebar (2-3 initially, progressively disclosed)
+
+**Page structure:**
+1. Query/session heading (full width)
+2. Compact current focus strip (full width)
+3. Two-column grid: conversational flow | papers sidebar
+4. Exploration sidebar as drawer (toggle from header)
 
 #### New Components Created
 
 - **`EvidenceBehindRead.tsx`** — Groups `EvidenceSnapshot` and `EvidencePanel` into a cohesive trust section. Shows paper counts, evidence shape (meta-analyses, RCTs, etc.), curated-set transparency, and expandable claim-level provenance.
 - **`MainRefineInput.tsx`** — Primary refinement input positioned in the main flow, after follow-up chips. Submits to existing sidebar orchestration endpoint.
 - **`ResearchTrail.tsx`** — Collapsed timeline showing exploration history: started with query, refined to X, asked Y, focused retrieval, etc. Display-only (no branching/restore).
+- **`PaperPathways.tsx`** — Sidebar component displaying papers grouped by usefulness (Where I'd start, Useful background, etc.). Shows 2-3 papers initially with "Show more" control. Extracted from `SearchResults` for two-column layout.
 
 #### Modified Components
 
-- **`SearchResults.tsx`** — Complete restructure. New order: Synthesis → EvidenceBehindRead → FollowUpOptions → MainRefineInput → Paper pathways (2-3 initially) → ResearchTrail. Papers progressively disclosed with "Show more" control.
+- **`SearchResults.tsx`** — Complete restructure. Now contains only conversational flow: Synthesis → EvidenceBehindRead → FollowUpOptions → MainRefineInput → ResearchTrail. Papers moved to separate `PaperPathways` component for sidebar layout.
 - **`ExplorationSidebar.tsx`** — Converted to **drawer pattern**. Now accepts `isOpen`/`onClose` props. Renders as overlay drawer when toggled, not persistent rail. Backdrop click closes. Toggle button appears in header when messages exist.
-- **`search-session.tsx`** — Layout changed from grid (canvas + sidebar) to single-column centered flow (max-w-3xl). Header includes drawer toggle button. Main content area contains all components in conversational order.
+- **`search-session.tsx`** — Layout changed to **two-column grid**: Left column (conversational flow) + Right column (papers sidebar). Uses `grid-cols-[1fr_400px]` on xl screens, stacks vertically on smaller screens. Papers sidebar uses sticky positioning to stay visible while scrolling.
 
 #### Key UX Changes
 
@@ -44,10 +49,12 @@ This is not a generic chat thread. This is a trust-first exploration surface whe
 - Claim-level provenance collapsed by default under "Inspect the claims" toggle
 
 **Paper display:**
+- Papers moved to **right sidebar column** (not at bottom of flow)
 - Only **2-3 papers shown initially** (from "Where I'd start" group)
 - "Show more papers" button reveals remaining papers + all groups
 - Paper cards remain first-class objects (not citations)
-- Progressive disclosure respects cognitive load
+- Sidebar uses **sticky positioning** — stays visible while scrolling through conversation
+- Two-column layout: conversational flow (left) | papers (right)
 
 **Refinement input:**
 - Moved from persistent sidebar to **main flow**
@@ -81,6 +88,7 @@ This is not a generic chat thread. This is a trust-first exploration surface whe
 - `artifacts/clarity/src/components/search/EvidenceBehindRead.tsx`
 - `artifacts/clarity/src/components/search/MainRefineInput.tsx`
 - `artifacts/clarity/src/components/search/ResearchTrail.tsx`
+- `artifacts/clarity/src/components/search/PaperPathways.tsx`
 
 **Modified files:**
 - `artifacts/clarity/src/components/search/SearchResults.tsx`
@@ -90,6 +98,7 @@ This is not a generic chat thread. This is a trust-first exploration surface whe
 **Documentation updated:**
 - `AGENTS.md` — updated Current State section
 - `ARCHITECTURE.md` — updated Frontend Components and Search Session Workspace sections
+- `CHANGELOG.md` — this entry
 
 ## 2026-05-11
 

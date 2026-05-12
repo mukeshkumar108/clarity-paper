@@ -230,11 +230,12 @@ Specific things that signal bad output:
 - Coverage note: `abstracts_only` always returned and shown in UI
 - Unpaywall enrichment (open-access PDF links, parallel with synthesis)
 - EvidencePanel UI: expandable claim rows with verbatim snippets + DOI links
-- **SearchResults restructured (2026-05-12): moved from "evidence canvas + persistent sidebar" to "conversational research flow"**
-  - New hierarchy: First read → Evidence behind this read → Follow-up chips → Main refine input → Paper pathways (progressive disclosure)
+- **SearchResults restructured (2026-05-12): moved from "evidence canvas + persistent sidebar" to "conversational research flow with papers sidebar"**
+  - **Two-column layout**: Left column (conversational flow) | Right column (papers sidebar)
+  - Conversational hierarchy: First read → Evidence behind this read → Follow-up chips → Main refine input → Research Trail
   - `EvidenceBehindRead` component groups evidence shape and claim-level provenance in one cohesive section
   - Evidence section appears immediately after First Read as the trust anchor
-  - Only 2-3 papers shown initially with "Show more" control
+  - Papers sidebar shows 2-3 papers initially with "Show more" control, uses sticky positioning
   - Main refinement input moved into flow (not persistent sidebar)
   - `ResearchTrail` component preserves exploration history as collapsed timeline
 - Paper pathways grouping in SearchResults using existing metadata only:

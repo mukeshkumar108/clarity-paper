@@ -144,12 +144,13 @@ This makes it possible to see when a search silently degraded to fewer upstream 
 | `EvidencePanel` | Claim-level provenance — expandable rows with verbatim abstract snippets and support labels |
 | `FollowUpOptions` | Suggested conversational next-step queries shown directly under the evidence section |
 | `MainRefineInput` | Primary refinement input in main flow, not sidebar — for asking follow-ups or narrowing scope |
+| `PaperPathways` | **Right sidebar** — papers grouped by usefulness with progressive disclosure (2-3 initially) |
 | `PaperCard` | Individual paper introduced as a pathway into understanding and into the explainer flow |
 | `ResearchTrail` | Collapsed timeline showing exploration history and prior refinements |
 | `CurrentFocusStrip` | Compact summary of what the current canvas is optimized for and what changed most recently |
 | `ExplorationSidebar` | **Drawer pattern** — conversational refinement history accessible via toggle, not persistent rail |
 
-**Order in `SearchResults.tsx`:** SynthesisAnswer → EvidenceBehindRead → FollowUpOptions → MainRefineInput → Paper pathways (2-3 initially, expandable) → ResearchTrail. The search surface now opens with orientation and evidence grounding, followed by natural conversational refinement, then paper pathways with progressive disclosure.
+**Layout:** Two-column grid (`grid-cols-[1fr_400px]` on xl screens). Left column: SearchResults (SynthesisAnswer → EvidenceBehindRead → FollowUpOptions → MainRefineInput → ResearchTrail). Right column: PaperPathways sidebar with sticky positioning. The search surface now opens with orientation and evidence grounding alongside paper pathways, followed by natural conversational refinement.
 
 ### Search Session Workspace
 
@@ -158,18 +159,21 @@ Search is no longer only a one-shot result page. The product now has two search 
 - `/search` — entry page for a new exploration
 - `/search/:sessionId` — persistent exploration workspace
 
-The session workspace uses a conversational research flow:
+The session workspace uses a **two-column conversational research flow**:
 
-1. query/session heading
-2. current focus strip (compact)
-3. first read / current understanding
-4. **evidence behind this read** (trust anchor — evidence counts + inspectable claims)
-5. follow-up question chips
-6. main ask/refine input (in-flow, not sidebar)
-7. recommended papers / paper pathways (2-3 initially, progressively disclosed)
-8. exploration trail / history (collapsed timeline)
+**Left column (conversational flow, ~60%):**
+1. first read / current understanding
+2. **evidence behind this read** (trust anchor — evidence counts + inspectable claims)
+3. follow-up question chips
+4. main ask/refine input (in-flow, not sidebar)
+5. exploration trail / history (collapsed timeline)
 
-The sidebar has been converted to a **drawer pattern** — accessible via toggle in the header, not a persistent visual rail. It is not a generic chat surface. Its job is to help the user:
+**Right column (papers sidebar, ~40%):**
+- recommended papers / paper pathways (2-3 initially, progressively disclosed)
+- sticky positioning keeps papers visible while scrolling
+- "Show more" control reveals all paper groups
+
+The exploration sidebar has been converted to a **drawer pattern** — accessible via toggle in the header, not a persistent visual rail. It is not a generic chat surface. Its job is to help the user:
 
 - ask about the current evidence without mutating the canvas
 - narrow the current paper set when lightweight filtering is enough
