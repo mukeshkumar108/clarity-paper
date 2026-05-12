@@ -409,17 +409,12 @@ async function runEditorialPass(
     {
       label: "primary",
       model: fast ? FAST_EDITORIAL_MODEL : EDITORIAL_MODEL,
-      timeoutMs: fast ? 60_000 : 60_000,
-    },
-    {
-      label: "retry",
-      model: fast ? FAST_EDITORIAL_MODEL : EDITORIAL_MODEL,
-      timeoutMs: fast ? 60_000 : 60_000,
+      timeoutMs: 60_000,
     },
     {
       label: "backup",
-      model: fast ? EDITORIAL_BACKUP_MODEL : EDITORIAL_BACKUP_MODEL,
-      timeoutMs: fast ? 75_000 : 75_000,
+      model: EDITORIAL_BACKUP_MODEL,
+      timeoutMs: 75_000,
     },
   ] as const;
 
@@ -428,17 +423,26 @@ async function runEditorialPass(
 
   for (const attempt of attempts) {
     const attemptStart = Date.now();
+    logger.info({
+      model: attempt.model,
+      attempt: attempt.label,
+      timeoutMs: attempt.timeoutMs,
+      textLength: userMessage.length,
+    }, "Editorial attempt start");
+
     try {
       const raw = await callLLM(systemPrompt, userMessage, editorialSummarySchema, {
         model: attempt.model,
         temperature: 0.2,
         timeoutMs: attempt.timeoutMs,
       });
-      if (timings) timings.pass2AttemptsMs!.push(Date.now() - attemptStart);
-      logger.info(
-        { model: attempt.model, attempt: attempt.label, fast, attemptMs: timings?.pass2AttemptsMs?.slice(-1)[0] },
-        "Editorial synthesis succeeded",
-      );
+      const attemptMs = Date.now() - attemptStart;
+      if (timings) timings.pass2AttemptsMs!.push(attemptMs);
+      logger.info({
+        model: attempt.model,
+        attempt: attempt.label,
+        attemptMs,
+      }, "Editorial synthesis succeeded");
 
       const parseStart = Date.now();
       const parsed = editorialSummarySchema.parse(JSON.parse(raw));
@@ -446,16 +450,20 @@ async function runEditorialPass(
 
       return parsed;
     } catch (err) {
-      if (timings) timings.pass2AttemptsMs!.push(Date.now() - attemptStart);
+      const attemptMs = Date.now() - attemptStart;
+      if (timings) timings.pass2AttemptsMs!.push(attemptMs);
       lastError = err;
-      logger.warn(
-        { err, model: attempt.model, attempt: attempt.label, fast, attemptMs: timings?.pass2AttemptsMs?.slice(-1)[0] },
-        "Editorial synthesis attempt failed",
-      );
+      logger.warn({
+        model: attempt.model,
+        attempt: attempt.label,
+        attemptMs,
+        errorName: (err as Error).name,
+        errorMessage: (err as Error).message,
+      }, "Editorial synthesis attempt failed");
     }
   }
 
-  logger.error({ err: lastError, fast, pass2AttemptsMs: timings?.pass2AttemptsMs }, "Editorial synthesis failed after retry and backup");
+  logger.error({ err: lastError, pass2AttemptsMs: timings?.pass2AttemptsMs }, "Editorial synthesis failed after primary and backup");
   throw new EditorialSynthesisFailedError();
 }
 

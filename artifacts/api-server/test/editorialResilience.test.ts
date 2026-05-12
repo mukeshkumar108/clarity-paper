@@ -134,7 +134,7 @@ describe("editorial resilience", () => {
     process.env.OPENROUTER_SEARCH_BACKUP_MODEL = "backup-search-model";
   });
 
-  it("retries the document editorial pass before succeeding", async () => {
+  it("retries the document editorial pass with backup model before succeeding", async () => {
     callLLMMock
       .mockResolvedValueOnce(structuredJson())
       .mockRejectedValueOnce(new Error("timeout"))
@@ -149,14 +149,13 @@ describe("editorial resilience", () => {
     expect(callLLMMock).toHaveBeenCalledTimes(3);
     expect(callLLMMock.mock.calls[0]?.[3]?.model).toBe("primary-fast-structured-model");
     expect(callLLMMock.mock.calls[1]?.[3]?.model).toBe("primary-fast-editorial-model");
-    expect(callLLMMock.mock.calls[2]?.[3]?.model).toBe("primary-fast-editorial-model");
+    expect(callLLMMock.mock.calls[2]?.[3]?.model).toBe("backup-editorial-model");
   });
 
-  it("fails over to the backup editorial model when primary attempts fail", async () => {
+  it("fails over to the backup editorial model when primary fails", async () => {
     callLLMMock
       .mockResolvedValueOnce(structuredJson())
-      .mockRejectedValueOnce(new Error("timeout-1"))
-      .mockRejectedValueOnce(new Error("timeout-2"))
+      .mockRejectedValueOnce(new Error("timeout"))
       .mockResolvedValueOnce(editorialJson());
 
     const { analyseDocument } = await import("../src/lib/documentAnalysisService");
@@ -165,16 +164,15 @@ describe("editorial resilience", () => {
     });
 
     expect(result.editorialView.orientation).toMatch(/real signal/);
-    expect(callLLMMock).toHaveBeenCalledTimes(4);
-    expect(callLLMMock.mock.calls[3]?.[3]?.model).toBe("backup-editorial-model");
+    expect(callLLMMock).toHaveBeenCalledTimes(3);
+    expect(callLLMMock.mock.calls[2]?.[3]?.model).toBe("backup-editorial-model");
   });
 
   it("throws when all editorial attempts fail instead of silently flattening the output", async () => {
     callLLMMock
       .mockResolvedValueOnce(structuredJson())
-      .mockRejectedValueOnce(new Error("timeout-1"))
-      .mockRejectedValueOnce(new Error("timeout-2"))
-      .mockRejectedValueOnce(new Error("timeout-3"));
+      .mockRejectedValueOnce(new Error("timeout-primary"))
+      .mockRejectedValueOnce(new Error("timeout-backup"));
 
     const { analyseDocument } = await import("../src/lib/documentAnalysisService");
 
@@ -188,7 +186,6 @@ describe("editorial resilience", () => {
   it("retries search synthesis and then uses the backup model", async () => {
     callLLMMock
       .mockRejectedValueOnce(new Error("timeout-1"))
-      .mockRejectedValueOnce(new Error("timeout-2"))
       .mockResolvedValueOnce(
         JSON.stringify({
           synthesisText:
@@ -254,7 +251,7 @@ describe("editorial resilience", () => {
     );
 
     expect(result.synthesisText).toMatch(/narrower and messier/);
-    expect(callLLMMock).toHaveBeenCalledTimes(3);
-    expect(callLLMMock.mock.calls[2]?.[3]?.model).toBe("backup-search-model");
+    expect(callLLMMock).toHaveBeenCalledTimes(2);
+    expect(callLLMMock.mock.calls[1]?.[3]?.model).toBe("backup-search-model");
   });
 });

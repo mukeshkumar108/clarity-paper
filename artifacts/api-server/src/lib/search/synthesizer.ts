@@ -175,7 +175,6 @@ export async function synthesisePapers(
 
   const attempts = [
     { label: "primary", model: SEARCH_MODEL, timeoutMs: 45_000 },
-    { label: "retry", model: SEARCH_MODEL, timeoutMs: 45_000 },
     { label: "backup", model: SEARCH_BACKUP_MODEL, timeoutMs: 75_000 },
   ] as const;
 
