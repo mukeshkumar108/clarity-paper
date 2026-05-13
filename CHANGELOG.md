@@ -4,6 +4,37 @@ All notable product and engineering changes should be tracked here.
 
 ## 2026-05-13
 
+### Search — Synthesis Prompt Overhaul: Interpretation Over Summarization
+
+**Goal:** Replace the flat, consensus-smoothed, literature-summary synthesis voice with a thoughtful, interpretive, human scientific collaborator voice.
+
+The old prompt accidentally incentivized: over-neutrality, flattening nuance, repetitive summarization, anti-interpretation behavior, excessive caution, "meta-analysis says roughly equal" collapse, and weak practical framing.
+
+**Root causes identified in audit:**
+- `REQUIRED STRUCTURE - FOLLOW EXACTLY` was a straitjacket — three-part template forced every answer into the same shape
+- The "perfect output" example became a surface template the LLM mimicked without doing the interpretive work
+- 11 negative constraints (NEVER/DON'T) outweighed positive permissions — model learned compliance over thinking
+- "Based on available abstracts" became a universal tic appended to every sentence
+- Safety boundary read as legal disclaimer, not honest editorial framing
+- No explicit permission to interpret, connect findings, or use world knowledge for framing
+
+**Changes:**
+- Replaced rigid template with principles: name the question type, tell the story, interpret the meaning, give a takeaway
+- Added explicit interpretation permissions: distinguish direct evidence / strong implication / mere suggestion / wishful thinking
+- Added world-knowledge framing: use biological/design knowledge to explain WHY a result matters
+- Balanced constraints: "what you ARE allowed" section added before "NEVER" section
+- Reframed abstraction constraint: situational ("the abstract doesn't reveal the dose") not universal
+- Replaced liability safety language with evidence-education framing
+- Removed perfect/bad output examples (became templates)
+- Paper formatting: switched from database-dump labels to narrative-friendly descriptions
+- User message: added `INTERPRETATION INSTRUCTIONS` section telling model WHEN to take positions vs be cautious
+- Follow-up prompt: rewritten for deepening over restating
+
+**Follow-up dedup bugfix:**
+- Added `deduplicateFollowUpOptions()` — normalizes and removes near-duplicate follow-up questions that the LLM sometimes produces
+
+**Sidebar orchestrator prompt:** Rewrote for intelligence; removed redundant examples that became decision templates.
+
 ### Search — Pipeline Hardening: Evidence-Fit, Comparison Awareness, Follow-Up Grounding (P0–P3)
 
 **Goal:** Close the quality gap between initial search and follow-up answers, make the pipeline aware of whether papers actually answer the question, and wire up planner intelligence that was previously produced but never consumed.

@@ -4,6 +4,19 @@ import { logger } from "../logger";
 import type { RankedPaper, ResearchPlan, EvidenceSnapshot } from "./types";
 import { extractClaims } from "./evidenceSpans";
 
+function deduplicateFollowUpOptions(options: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const option of options) {
+    const key = option.toLowerCase().replace(/\s+/g, " ").replace(/[^\w\s]/g, "").trim();
+    if (!seen.has(key) && key.length > 5) {
+      seen.add(key);
+      result.push(option);
+    }
+  }
+  return result;
+}
+
 // Search synthesis is a short 3-4 sentence summary — Gemini Flash is fast and
 // good enough. DeepSeek would be overkill here and causes 60-90s+ timeouts.
 // Use OPENROUTER_SEARCH_MODEL to override in production.
@@ -223,6 +236,8 @@ export async function synthesisePapers(
   for (const attempt of attempts) {
     try {
       const result = await attemptSynthesis(userMessage, attempt.model, attempt.timeoutMs);
+      // Deduplicate follow-up options (LLM sometimes produces near-duplicates)
+      result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
       logger.info(
         { model: attempt.model, attempt: attempt.label, query: plan.userQuestion },
         "Search synthesis succeeded",
@@ -423,6 +438,7 @@ export async function synthesiseFollowUpAnswer(
 
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       const result = followUpOutputSchema.parse(data);
+      result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
 
       // P3: whatChanged retry — if new papers were retrieved but whatChanged is missing/wrong, retry once
       if (hasNewPapers && (!result.whatChanged || result.whatChanged.trim().length < 40 ||
@@ -441,6 +457,7 @@ export async function synthesiseFollowUpAnswer(
         );
         const retryData = typeof retryRaw === "string" ? JSON.parse(retryRaw) : retryRaw;
         const retryResult = followUpOutputSchema.parse(retryData);
+        retryResult.followUpOptions = deduplicateFollowUpOptions(retryResult.followUpOptions);
         if (retryResult.whatChanged && retryResult.whatChanged.trim().length >= 40) {
           logger.info({ query: followUpQuestion }, "whatChanged retry succeeded");
           return retryResult;
