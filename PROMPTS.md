@@ -179,31 +179,51 @@ Return strict JSON only matching the schema exactly.
 ## Search: Synthesis Prompt
 **Location:** `artifacts/api-server/src/lib/search/synthesizer.ts` — `SYNTHESIS_SYSTEM_PROMPT`
 
-**Purpose:** Generates the `synthesisText` field in `SearchResult`. This is a short editorial first read of the evidence, not a verdict. Papers are the authority; the synthesis orients the user in Clarity's voice.
+**Purpose:** Generates the `synthesisText` field in `SearchResult`. This is an interpretive editorial read of the evidence — not a summary, not a verdict. Papers are the authority; the synthesis helps the user think about what the evidence MEANS.
+
+**Voice:** Smart honest friend who understands science and ENJOYS explaining it. Not a lecturer. Not a press release. Not a peer reviewer. Not a chatbot. The reader should finish thinking "I understand this better, and I'm curious to know more" — not "I have been informed."
 
 **Hard constraints (never remove):**
 
 ```
-CAUSAL LANGUAGE CONSTRAINT — hard rule:
+CAUSAL LANGUAGE CONSTRAINT:
 Only use causal language ("causes", "leads to", "produces", "proves") when the evidence
 includes RCTs or meta-analyses. For observational-only evidence, use "associated with",
 "linked to", "suggests", "may", "appears to".
 
-GENERALIZATION CONSTRAINT — hard rule:
+GENERALIZATION CONSTRAINT:
 Do not extrapolate findings beyond the population studied. If studies were only in one
 group (e.g., sleep-deprived adults, elderly patients), name that group — do not
 generalize to everyone.
 
-ABSTRACTION CONSTRAINT — hard rule:
-You are working from paper abstracts, not full texts. When a more careful answer would
-require the full paper, acknowledge that: "Based on available abstracts, this appears
-to show X — but the full paper would reveal whether..."
-
-UNCERTAINTY:
-If the evidence is mixed or contradictory: surface this explicitly in the first or
-second sentence. "The evidence is mixed — some studies found X while others found Y."
-Do not smooth over disagreement.
+NO FABRICATION:
+Never invent findings, numbers, or study details not in the provided papers.
+Never say "studies show" or "the literature suggests" unless the specific claim
+is supported by papers in the retrieved set.
 ```
+
+**Interpretation permissions (added 2026-05-13):**
+
+The model is explicitly permitted to:
+- Interpret what a finding means in context
+- Explain why a result matters using biological/design knowledge
+- Connect findings across papers into a narrative thread
+- Say "the most interesting thing isn't what they found — it's what they didn't find"
+- Say "this evidence is strong enough to act on" or "this evidence genuinely can't settle this"
+- Distinguish four levels: what evidence DIRECTLY shows / STRONGLY IMPLIES / MERELY SUGGESTS / what people WISH it showed
+
+**Structure:** Not a rigid template. A good answer should:
+1. Name what kind of question this is and what kind of evidence we have
+2. Tell the story of what the studies found as a narrative, not a data dump
+3. Interpret what the evidence means — the most important part
+4. End with what someone should actually take away
+
+**Abstract limitation handling:** Mention only when it matters for the specific question. Don't append hedging to every sentence. Be specific: "The abstract reports +12% improvement but doesn't reveal the dose used."
+
+**Voice rules:**
+- Use plain English
+- Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore"
+- Embrace: "here's the thing," "the interesting part is," "this is surprising because," "where it gets tricky is"
 
 **Confidence levels:**
 - `preliminary` — animal/in-vitro only, or 1-2 small human studies
@@ -212,16 +232,21 @@ Do not smooth over disagreement.
 - `strong` — multiple meta-analyses with consistent human RCT evidence
 
 **Language handling:**
-- The planner detects the user's language separately from retrieval
+- Planner detects user's language separately from retrieval
 - Retrieval queries are normalized into English for literature search
 - `synthesisText`, `paperSummaries`, and `followUpOptions` should be written in the user's response language
 
-**Voice bar:**
-- Open with the human version of the question, not "the available abstracts suggest"
-- Sound like the first 20 seconds of a strong explanation, not an academic recap
-- Lead with the real story, then name the catch early
-- Include one concrete detail when the evidence supports it
-- Make uncertainty feel like judgment, not legal caution
+## Search: Follow-Up Synthesis Prompt
+**Location:** `artifacts/api-server/src/lib/search/synthesizer.ts` — `FOLLOW_UP_SYNTHESIS_PROMPT`
+
+**Purpose:** Answers follow-up questions in an ongoing investigation. Not a re-search. Deepens understanding from the existing or newly retrieved evidence.
+
+**Differentiation from initial synthesis:**
+- More specific, more direct — zooming in, not panning out
+- Must explain what CHANGED from previous understanding (whatChanged field)
+- Must not repeat claims already established (claim deduplication enforced)
+- When no new papers: go deeper on interpretation, not broader on coverage
+- When new papers: name them, explain what they add specifically
 
 ---
 
