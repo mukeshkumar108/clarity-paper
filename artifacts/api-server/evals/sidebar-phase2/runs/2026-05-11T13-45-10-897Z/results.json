@@ -1,0 +1,297 @@
+[
+  {
+    "id": "1",
+    "audience": "consumer",
+    "initialQuery": "is magnesium good for sleep?",
+    "sidebarInput": "what does this actually mean?",
+    "sessionId": 28,
+    "classification": "answer_current_results",
+    "retrievalTriggered": false,
+    "canvasMutated": false,
+    "usedCurrentPapers": false,
+    "focusSummaryBefore": "This canvas is currently oriented around magnesium, sleep.",
+    "focusSummaryAfter": "This canvas is currently oriented around magnesium, sleep.",
+    "assistantReply": "The current evidence suggests that magnesium may be beneficial for sleep in specific populations like older adults with insomnia and women with PCOS, but the overall evidence is limited. Some studies also show mixed results for conditions like restless legs syndrome.",
+    "papersBefore": 10,
+    "papersAfter": 10,
+    "followUpsAfter": [
+      "What specific types of magnesium were studied?",
+      "What doses of magnesium were used in the studies?",
+      "Were there any side effects reported from magnesium supplementation?"
+    ],
+    "warnings": [
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"magnesium supplementation sleep quality randomized controlled trial\"}",
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"magnesium effects on insomnia\"}",
+      "[warn] Semantic Scholar circuit opened — skipping SS for cooldown period {}",
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"magnesium sleep duration human studies\"}",
+      "[warn] CORE API error {\"status\":429,\"query\":\"magnesium supplementation sleep quality randomized controlled trial\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"magnesium effects on insomnia\"}",
+      "[warn] Topical veto failed — keeping original papers {\"err\":{}}"
+    ],
+    "errors": []
+  },
+  {
+    "id": "2",
+    "audience": "consumer",
+    "initialQuery": "brain fog supplements",
+    "sidebarInput": "i'm just tired all the time",
+    "sessionId": 29,
+    "classification": "refine_current_canvas",
+    "retrievalTriggered": true,
+    "canvasMutated": true,
+    "usedCurrentPapers": false,
+    "focusSummaryBefore": "This canvas is currently oriented around brain fog, supplements.",
+    "focusSummaryAfter": "This canvas is now oriented around fatigue and supplements.",
+    "assistantReply": "I can help you explore supplements for fatigue. The current canvas focuses on brain fog. Would you like to broaden the search to include general fatigue, or focus on specific types of supplements?",
+    "papersBefore": 3,
+    "papersAfter": 10,
+    "followUpsAfter": [
+      "What specific doses of these supplements were used in the studies?",
+      "Were there any side effects reported from these supplements?",
+      "Are there any supplements that have been studied for general fatigue, not tied to a specific condition?"
+    ],
+    "warnings": [
+      "[warn] CORE API error {\"status\":429,\"query\":\"nutritional interventions cognitive function\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"nutritional interventions cognitive function\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"herbal supplements brain fog efficacy\"}",
+      "[warn] CORE API error {\"status\":429,\"query\":\"vitamins minerals fatigue meta-analysis\"}",
+      "[warn] CORE API error {\"status\":500,\"query\":\"nutritional interventions fatigue systematic review\"}",
+      "[warn] CORE API error {\"status\":500,\"query\":\"supplements for fatigue randomized controlled trial\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"supplements for fatigue randomized controlled trial\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"nutritional interventions fatigue systematic review\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"vitamins minerals fatigue meta-analysis\"}",
+      "[warn] Topical veto would leave too few papers — skipping removals {}"
+    ],
+    "errors": []
+  },
+  {
+    "id": "3",
+    "audience": "consumer",
+    "initialQuery": "does creatine help the brain?",
+    "sidebarInput": "is this relevant if i sleep badly?",
+    "sessionId": 31,
+    "classification": "refine_current_canvas",
+    "retrievalTriggered": false,
+    "canvasMutated": true,
+    "usedCurrentPapers": true,
+    "focusSummaryBefore": "This canvas is currently oriented around creatine, brain, cognitive function.",
+    "focusSummaryAfter": "This canvas is currently oriented around creatine, brain, cognitive function, and sleep quality.",
+    "assistantReply": "I can refine the search to focus on how creatine supplementation might impact sleep quality.",
+    "papersBefore": 7,
+    "papersAfter": 6,
+    "followUpsAfter": [
+      "What specific cognitive functions does creatine seem to improve?",
+      "Are there any studies on creatine's impact on sleep quality in younger adults?",
+      "What doses of creatine were used in the studies on brain function?"
+    ],
+    "warnings": [
+      "[warn] CORE circuit opened — skipping CORE for cooldown period {}",
+      "[warn] CORE API error {\"status\":429,\"query\":\"creatine brain health effects humans\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"creatine supplementation cognitive function randomized trial\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"creatine nootropic cognitive performance\"}"
+    ],
+    "errors": []
+  },
+  {
+    "id": "4",
+    "audience": "professional",
+    "initialQuery": "ketamine treatment for PTSD",
+    "sidebarInput": "only human RCTs",
+    "sessionId": 32,
+    "classification": "refine_current_canvas",
+    "retrievalTriggered": false,
+    "canvasMutated": true,
+    "usedCurrentPapers": true,
+    "focusSummaryBefore": "This canvas is currently oriented around ketamine, PTSD.",
+    "focusSummaryAfter": "This canvas is currently oriented around ketamine, PTSD, and human RCTs.",
+    "assistantReply": "I will filter the current results to include only human randomized controlled trials.",
+    "papersBefore": 8,
+    "papersAfter": 7,
+    "followUpsAfter": [
+      "What specific doses of ketamine were used in these trials?",
+      "How long did the positive effects of ketamine last in these studies?",
+      "What were the main side effects observed in the ketamine treatment groups?"
+    ],
+    "warnings": [
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"intravenous ketamine PTSD outcomes\"}",
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"ketamine efficacy PTSD symptoms\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"ketamine treatment PTSD randomized controlled trial\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"ketamine efficacy PTSD symptoms\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"intravenous ketamine PTSD outcomes\"}"
+    ],
+    "errors": []
+  },
+  {
+    "id": "5",
+    "audience": "professional",
+    "initialQuery": "depression interventions",
+    "sidebarInput": "non-pharmaceutical only",
+    "sessionId": 33,
+    "classification": "clarification_prompt",
+    "retrievalTriggered": false,
+    "canvasMutated": false,
+    "usedCurrentPapers": false,
+    "focusSummaryBefore": "This canvas is currently oriented around depression, interventions.",
+    "focusSummaryAfter": "This canvas is now focused on non-pharmaceutical interventions for depression.",
+    "assistantReply": "I need one more detail before narrowing this cleanly. Which direction matters most here?",
+    "papersBefore": 8,
+    "papersAfter": 8,
+    "followUpsAfter": [
+      "What are the specific types of psychotherapy mentioned?",
+      "Are there any interventions specifically for depression in older adults?",
+      "What are the potential negative effects of mindfulness-based therapies?"
+    ],
+    "warnings": [
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"major depressive disorder interventions efficacy\"}",
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"depression treatment randomized controlled trial\"}",
+      "[warn] Semantic Scholar circuit opened — skipping SS for cooldown period {}",
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"psychotherapy for depression systematic review\"}",
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"pharmacological treatment for depression meta-analysis\"}",
+      "[warn] CORE API error {\"status\":429,\"query\":\"psychotherapy for depression systematic review\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"depression treatment randomized controlled trial\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"major depressive disorder interventions efficacy\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"psychotherapy for depression systematic review\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"pharmacological treatment for depression meta-analysis\"}",
+      "[warn] Topical veto failed — keeping original papers {\"err\":{}}"
+    ],
+    "errors": []
+  },
+  {
+    "id": "6",
+    "audience": "professional",
+    "initialQuery": "CBT vs mindfulness depression",
+    "sidebarInput": "are these mostly short-term outcomes?",
+    "sessionId": 34,
+    "classification": "answer_current_results",
+    "retrievalTriggered": false,
+    "canvasMutated": false,
+    "usedCurrentPapers": false,
+    "focusSummaryBefore": "This canvas is currently oriented around Cognitive Behavioral Therapy (CBT), mindfulness, depression.",
+    "focusSummaryAfter": "This canvas is currently oriented around Cognitive Behavioral Therapy (CBT), mindfulness, depression, and their short-term outcomes.",
+    "assistantReply": "The current abstracts do not make that clear enough. This canvas gives a directional read on the evidence, but not a reliable split between short-term and longer-term outcomes.",
+    "papersBefore": 5,
+    "papersAfter": 5,
+    "followUpsAfter": [
+      "What specific mindfulness techniques are used for depression?",
+      "How does CBT specifically target depression?",
+      "Are there specific types of depression that respond better to CBT or mindfulness?"
+    ],
+    "warnings": [
+      "[warn] OpenAlex request timed out {\"query\":\"CBT vs mindfulness depression randomized controlled trial\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"cognitive behavioral therapy mindfulness depression comparative effectiveness\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"mindfulness-based cognitive therapy vs CBT depression\"}"
+    ],
+    "errors": []
+  },
+  {
+    "id": "7",
+    "audience": "retrieval",
+    "initialQuery": "depression interventions",
+    "sidebarInput": "what about sleep?",
+    "sessionId": 35,
+    "classification": "focused_retrieval_expansion",
+    "retrievalTriggered": true,
+    "canvasMutated": true,
+    "usedCurrentPapers": false,
+    "focusSummaryBefore": "This canvas is currently oriented around depression, interventions.",
+    "focusSummaryAfter": "This canvas is now oriented around sleep interventions for depression.",
+    "assistantReply": "I can look for studies on sleep interventions for depression. This will expand the current canvas.",
+    "papersBefore": 8,
+    "papersAfter": 5,
+    "followUpsAfter": [
+      "What specific sleep problems are most linked to depression?",
+      "How does CBT-I specifically help with depression?",
+      "Are there other types of sleep interventions being studied for depression?"
+    ],
+    "warnings": [
+      "[warn] CORE API error {\"status\":429,\"query\":\"CBT-I depression efficacy\"}",
+      "[warn] CORE circuit opened — skipping CORE for cooldown period {}",
+      "[warn] CORE API error {\"status\":429,\"query\":\"sleep hygiene depression treatment\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"sleep interventions depression randomized controlled trial\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"sleep restriction therapy depression outcomes\"}",
+      "[warn] OpenAlex request timed out {\"query\":\"sleep hygiene depression treatment\"}"
+    ],
+    "errors": []
+  },
+  {
+    "id": "8",
+    "audience": "retrieval",
+    "initialQuery": "creatine cognition",
+    "sidebarInput": "show me papers specifically on sleep deprivation",
+    "sessionId": 37,
+    "classification": "focused_retrieval_expansion",
+    "retrievalTriggered": true,
+    "canvasMutated": true,
+    "usedCurrentPapers": false,
+    "focusSummaryBefore": "This canvas is currently oriented around creatine, cognition.",
+    "focusSummaryAfter": "This canvas will now focus on the effects of sleep deprivation on cognition.",
+    "assistantReply": "I will update the canvas to include papers specifically on sleep deprivation and its effects on cognition.",
+    "papersBefore": 9,
+    "papersAfter": 8,
+    "followUpsAfter": [
+      "What specific cognitive functions are most vulnerable to sleep deprivation?",
+      "How does sleep deprivation affect decision-making and executive functions?",
+      "Can cognitive abilities be fully restored after a period of sleep deprivation?"
+    ],
+    "warnings": [
+      "[warn] Topical veto failed — keeping original papers {\"err\":{}}",
+      "[warn] CORE API error {\"status\":429,\"query\":\"sleep deprivation cognitive performance randomized controlled trial\"}",
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"sleep deprivation cognitive performance randomized controlled trial\"}",
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"sleep deprivation executive function studies\"}",
+      "[warn] Semantic Scholar circuit opened — skipping SS for cooldown period {}",
+      "[warn] Semantic Scholar API error {\"status\":429,\"query\":\"effects of sleep deprivation on attention and memory\"}"
+    ],
+    "errors": []
+  },
+  {
+    "id": "9",
+    "audience": "retrieval",
+    "initialQuery": "magnesium glycinate sleep",
+    "sidebarInput": "did you find anything specifically on glycinate?",
+    "sessionId": 39,
+    "classification": "refine_current_canvas",
+    "retrievalTriggered": false,
+    "canvasMutated": true,
+    "usedCurrentPapers": true,
+    "focusSummaryBefore": "This canvas is currently oriented around magnesium glycinate, sleep.",
+    "focusSummaryAfter": "This canvas is now focused on magnesium glycinate and its effects on sleep.",
+    "assistantReply": "I have updated the canvas to focus specifically on magnesium glycinate.",
+    "papersBefore": 6,
+    "papersAfter": 5,
+    "followUpsAfter": [
+      "What specific doses of magnesium were used in the studies on sleep?",
+      "Are there any known side effects of magnesium glycinate?",
+      "How does magnesium glycinate compare to other forms of magnesium for sleep?"
+    ],
+    "warnings": [
+      "[warn] CORE API error {\"status\":429,\"query\":\"magnesium glycinate sleep onset latency\"}"
+    ],
+    "errors": []
+  },
+  {
+    "id": "10",
+    "audience": "retrieval",
+    "initialQuery": "fasting cognition",
+    "sidebarInput": "find all papers",
+    "sessionId": 40,
+    "classification": "exhaustive_intent_transparency",
+    "retrievalTriggered": false,
+    "canvasMutated": false,
+    "usedCurrentPapers": false,
+    "focusSummaryBefore": "This canvas is currently oriented around fasting, cognition.",
+    "focusSummaryAfter": "This canvas is currently oriented around fasting, cognition.",
+    "assistantReply": "This canvas is a curated starting set, not an exhaustive literature sweep. A broader all-papers mode is not implemented yet, so I should not present the current set as comprehensive.",
+    "papersBefore": 9,
+    "papersAfter": 9,
+    "followUpsAfter": [
+      "What specific types of fasting have been studied for their effects on cognition?",
+      "Are there any studies looking at the impact of intermittent fasting on cognitive function in healthy adults?",
+      "What are the proposed mechanisms by which fasting might influence brain health?"
+    ],
+    "warnings": [
+      "[warn] CORE API error {\"status\":429,\"query\":\"fasting cognitive function randomized controlled trial\"}",
+      "[warn] Topical veto failed — keeping original papers {\"err\":{}}"
+    ],
+    "errors": []
+  }
+]

@@ -21,36 +21,27 @@ export function Inspector({
   selectedContradictionId,
   onClose
 }: InspectorProps) {
-  if (!isOpen) {
-    return (
-      <button
-        onClick={() => {}}
-        className="absolute right-4 top-20 bg-white border border-pebble-gray/70 rounded-lg px-3 py-2 text-[13px] text-muted-stone hover:text-deep-shadow shadow-subtle"
-      >
-        Open inspector
-      </button>
-    );
-  }
+  if (!isOpen) return null;
 
   return (
-    <div className="w-[400px] border-l border-pebble-gray/50 bg-white/80 flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-pebble-gray/50">
-        <h3 className="text-[14px] font-semibold text-deep-shadow">
+    <div className="w-[380px] border-l border-pebble-gray/30 bg-white flex flex-col h-full">
+      {/* Header - minimal, elegant */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-pebble-gray/20">
+        <h3 className="text-[13px] font-medium text-muted-stone uppercase tracking-wider">
           {mode === 'paper' && 'Paper'}
           {mode === 'contradiction' && 'Contradiction'}
           {!mode && 'Inspector'}
         </h3>
         <button
           onClick={onClose}
-          className="p-1.5 hover:bg-pebble-gray/50 rounded-lg transition-colors"
+          className="p-1.5 hover:bg-pebble-gray/30 rounded-md transition-colors text-muted-stone hover:text-deep-shadow"
         >
-          <X className="w-4 h-4 text-muted-stone" />
+          <X className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* Content - editorial spacing */}
+      <div className="flex-1 overflow-y-auto p-5">
         {mode === 'paper' && selectedPaperId && (
           <PaperView 
             paper={papers.find(p => p.id === selectedPaperId)!} 
@@ -64,9 +55,9 @@ export function Inspector({
         )}
         
         {!mode && (
-          <div className="text-center py-12 text-muted-stone">
-            <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="text-[14px]">Select a paper or contradiction<br/>to inspect</p>
+          <div className="text-center py-16 text-muted-stone/50">
+            <FileText className="w-8 h-8 mx-auto mb-3 opacity-40" strokeWidth={1.5} />
+            <p className="text-[13px]">Select evidence to inspect</p>
           </div>
         )}
       </div>
@@ -78,53 +69,52 @@ function PaperView({ paper }: { paper: PaperV1 }) {
   if (!paper) return null;
 
   return (
-    <div className="space-y-4">
-      {/* Title */}
+    <div className="space-y-6">
+      {/* Title - editorial prominence */}
       <div>
-        <h4 className="text-[16px] font-semibold text-deep-shadow leading-snug">
+        <h4 className="text-[17px] font-medium text-deep-shadow leading-[1.5]">
           {paper.title}
         </h4>
-        <div className="mt-2 flex items-center gap-3 text-[12px] text-muted-stone">
-          <span className="flex items-center gap-1">
-            <Calendar className="w-3 h-3" />
-            {paper.year}
-          </span>
-          <span className="px-2 py-0.5 rounded-full bg-pebble-gray/50">
+        
+        {/* Meta - calm, integrated */}
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px] text-muted-stone">
+          <span>{paper.year}</span>
+          <span className="text-pebble-gray">·</span>
+          <span className="px-2 py-0.5 rounded-full border border-pebble-gray/40 text-[11px]">
             {paper.studyType}
           </span>
           {paper.sampleSize && (
-            <span>n={paper.sampleSize}</span>
+            <>
+              <span className="text-pebble-gray">·</span>
+              <span>n={paper.sampleSize}</span>
+            </>
           )}
         </div>
       </div>
 
-      {/* Authors */}
-      <div className="flex items-start gap-2 text-[13px] text-muted-stone">
-        <Users className="w-4 h-4 mt-0.5 shrink-0" />
-        <p>{paper.authors.slice(0, 3).join(', ')}{paper.authors.length > 3 ? ' et al.' : ''}</p>
+      {/* Authors - subtle */}
+      <div className="text-[13px] text-muted-stone">
+        <p>{paper.authors.slice(0, 4).join(', ')}{paper.authors.length > 4 ? ' et al.' : ''}</p>
       </div>
 
-      {/* Abstract */}
-      <div className="pt-3 border-t border-pebble-gray/30">
-        <h5 className="text-[12px] font-semibold uppercase tracking-wide text-muted-stone mb-2">
-          Abstract
-        </h5>
-        <p className="text-[13px] text-deep-shadow/80 leading-relaxed">
+      {/* Abstract - reading experience */}
+      <div className="pt-4 border-t border-pebble-gray/20">
+        <p className="text-[14px] text-deep-shadow/80 leading-[1.7]">
           {paper.abstract}
         </p>
       </div>
 
-      {/* Actions */}
+      {/* Actions - minimal */}
       {paper.doi && (
         <div className="pt-2">
           <a
             href={`https://doi.org/${paper.doi}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[13px] text-onyx-outline hover:text-deep-shadow transition-colors"
+            className="inline-flex items-center gap-1.5 text-[13px] text-onyx-outline hover:text-deep-shadow transition-colors underline underline-offset-2 decoration-onyx-outline/30 hover:decoration-onyx-outline"
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            View full text
+            View full paper
           </a>
         </div>
       )}
@@ -136,64 +126,64 @@ function ContradictionView({ contradiction }: { contradiction: ContradictionV1 }
   if (!contradiction) return null;
 
   return (
-    <div className="space-y-5">
-      {/* Claim */}
+    <div className="space-y-6">
+      {/* Claim - clear framing */}
       <div>
-        <h5 className="text-[12px] font-semibold uppercase tracking-wide text-muted-stone mb-2">
-          Disagreement on
-        </h5>
-        <p className="text-[15px] font-medium text-deep-shadow">
+        <p className="text-[11px] uppercase tracking-wider text-muted-stone/60 font-medium mb-2">
+          Disagreement
+        </p>
+        <p className="text-[16px] text-deep-shadow leading-[1.5]">
           {contradiction.claim}
         </p>
       </div>
 
-      {/* Paper A */}
-      <div className="bg-forest-green-action/5 border border-forest-green-action/20 rounded-xl p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-2 h-2 rounded-full bg-forest-green-action" />
-          <span className="text-[12px] font-medium text-forest-green-action">
-            {contradiction.paperA.authors[0]} et al. {contradiction.paperA.year}
+      {/* Paper A - calm, not colored */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-deep-shadow/40" />
+          <span className="text-[12px] text-muted-stone">
+            {contradiction.paperA.authors[0]} et al., {contradiction.paperA.year}
           </span>
         </div>
-        <p className="text-[14px] text-deep-shadow">
+        <p className="text-[14px] text-deep-shadow pl-3.5 border-l-2 border-deep-shadow/20">
           {contradiction.findingA}
         </p>
       </div>
 
-      {/* VS */}
-      <div className="text-center text-[12px] font-semibold text-muted-stone uppercase tracking-wide">
-        vs
+      {/* VS - minimal */}
+      <div className="py-1">
+        <div className="h-px bg-pebble-gray/30" />
       </div>
 
       {/* Paper B */}
-      <div className="bg-goldenrod-accent/5 border border-goldenrod-accent/20 rounded-xl p-3">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="w-2 h-2 rounded-full bg-goldenrod-accent" />
-          <span className="text-[12px] font-medium text-goldenrod-accent">
-            {contradiction.paperB.authors[0]} et al. {contradiction.paperB.year}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-deep-shadow/40" />
+          <span className="text-[12px] text-muted-stone">
+            {contradiction.paperB.authors[0]} et al., {contradiction.paperB.year}
           </span>
         </div>
-        <p className="text-[14px] text-deep-shadow">
+        <p className="text-[14px] text-deep-shadow pl-3.5 border-l-2 border-deep-shadow/20">
           {contradiction.findingB}
         </p>
       </div>
 
-      {/* Possible reason */}
+      {/* Possible reason - editorial */}
       {contradiction.possibleReason && (
-        <div className="pt-3 border-t border-pebble-gray/30">
-          <h5 className="text-[12px] font-semibold uppercase tracking-wide text-muted-stone mb-2">
+        <div className="pt-4 border-t border-pebble-gray/20">
+          <p className="text-[11px] uppercase tracking-wider text-muted-stone/60 font-medium mb-2">
             Possible explanation
-          </h5>
-          <p className="text-[13px] text-deep-shadow/80">
+          </p>
+          <p className="text-[14px] text-deep-shadow/80 leading-[1.6]">
             {contradiction.possibleReason}
           </p>
         </div>
       )}
 
-      {/* Question */}
+      {/* Question action - subtle */}
       <div className="pt-2">
-        <button className="w-full text-left rounded-lg border border-pebble-gray/60 bg-transparent px-3 py-2 text-[13px] text-deep-shadow hover:border-onyx-outline/40 hover:bg-onyx-outline/5 transition-all">
-          Ask about this contradiction →
+        <button className="text-[13px] text-onyx-outline hover:text-deep-shadow transition-colors underline underline-offset-2 decoration-onyx-outline/30 hover:decoration-onyx-outline">
+          Ask about this contradiction
         </button>
       </div>
     </div>

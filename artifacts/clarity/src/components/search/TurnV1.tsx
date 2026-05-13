@@ -1,5 +1,5 @@
-import React from "react";
-import { User, Bot, Flame, FileText } from "lucide-react";
+import React, { useState } from "react";
+import { User, Bot, Flame, FileText, ChevronDown, ChevronUp } from "lucide-react";
 
 export interface PaperV1 {
   id: string;
@@ -39,6 +39,7 @@ export interface TurnV1 {
 interface TurnProps {
   turn: TurnV1;
   papers: PaperV1[];
+  activePaperId?: string | null;
   onPaperClick: (paperId: string) => void;
   onContradictionClick: (contradictionId: string) => void;
   onSuggestedPath: (path: string) => void;
@@ -48,60 +49,65 @@ interface TurnProps {
 export function TurnV1Component({ 
   turn, 
   papers, 
+  activePaperId,
   onPaperClick, 
   onContradictionClick,
   onSuggestedPath,
   isLatest 
 }: TurnProps) {
   const isUser = turn.role === 'user';
+  const [showEvidence, setShowEvidence] = useState(false);
 
   if (isUser) {
     return (
-      <div className="flex gap-3 justify-end">
-        <div className="flex-1 max-w-[85%]">
-          <div className="bg-onyx-outline text-white rounded-2xl rounded-tr-sm px-4 py-3">
-            <p className="text-[15px] leading-relaxed">{turn.synthesis}</p>
-          </div>
+      <div className="flex gap-3 justify-end py-2">
+        <div className="flex-1 max-w-[80%] text-right">
+          <p className="text-[15px] text-deep-shadow/80 leading-relaxed inline-block">
+            {turn.synthesis}
+          </p>
         </div>
-        <div className="shrink-0 w-8 h-8 rounded-full bg-onyx-outline flex items-center justify-center">
-          <User className="w-4 h-4 text-white" />
+        <div className="shrink-0 w-6 h-6 rounded-full bg-pebble-gray/30 flex items-center justify-center mt-0.5">
+          <User className="w-3 h-3 text-muted-stone" />
         </div>
       </div>
     );
   }
 
-  // Assistant turn
+  // Assistant turn - editorial, calm, spacious
   return (
-    <div className={`flex gap-3 ${isLatest ? 'animate-in fade-in slide-in-from-bottom-2 duration-500' : ''}`}>
-      <div className="shrink-0 w-8 h-8 rounded-full bg-canvas-parchment border border-pebble-gray flex items-center justify-center">
-        <Bot className="w-4 h-4 text-onyx-outline" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="bg-white/70 border border-pebble-gray/70 rounded-2xl rounded-tl-sm px-4 py-4">
-          {/* Synthesis */}
-          <div className="prose prose-sm max-w-none">
-            <p className="text-[15px] text-deep-shadow leading-relaxed whitespace-pre-wrap">
-              {turn.synthesis}
-            </p>
+    <div className={`py-6 ${isLatest ? 'animate-in fade-in duration-500' : ''}`}>
+      {/* Avatar and content */}
+      <div className="flex gap-4">
+        <div className="shrink-0 w-6 h-6 rounded-full bg-onyx-outline/10 flex items-center justify-center mt-1">
+          <Bot className="w-3.5 h-3.5 text-onyx-outline/60" />
+        </div>
+        
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* Synthesis - editorial typography */}
+          <div className="prose prose-slate max-w-none">
+            <div 
+              className="text-[16px] text-deep-shadow leading-[1.7] whitespace-pre-wrap"
+              dangerouslySetInnerHTML={{ 
+                __html: formatSynthesis(turn.synthesis) 
+              }}
+            />
           </div>
 
-          {/* Evidence line */}
-          <div className="mt-4 pt-3 border-t border-pebble-gray/30 flex items-center gap-4 text-[13px]">
+          {/* Evidence and contradictions - minimal, integrated */}
+          <div className="flex items-center gap-4 text-[13px] text-muted-stone">
             <button 
-              onClick={() => {
-                // Open inspector with papers
-                if (turn.paperReferences.length > 0) {
-                  onPaperClick(turn.paperReferences[0]);
-                }
-              }}
-              className="flex items-center gap-1.5 text-muted-stone hover:text-deep-shadow transition-colors"
+              onClick={() => setShowEvidence(!showEvidence)}
+              className="flex items-center gap-1.5 hover:text-deep-shadow transition-colors group"
             >
-              <FileText className="w-4 h-4" />
+              <FileText className="w-3.5 h-3.5" />
               <span>
-                Based on {turn.evidenceCount} papers
+                {turn.evidenceCount} papers
                 {turn.newEvidenceCount > 0 && (
-                  <span className="text-onyx-outline font-medium"> (+{turn.newEvidenceCount} new)</span>
+                  <span className="text-onyx-outline"> · {turn.newEvidenceCount} new</span>
                 )}
+              </span>
+              <span className="text-pebble-gray group-hover:text-onyx-outline transition-colors">
+                {showEvidence ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
               </span>
             </button>
             
@@ -114,28 +120,80 @@ export function TurnV1Component({
                 }}
                 className="flex items-center gap-1.5 text-goldenrod-accent hover:text-goldenrod-accent/80 transition-colors"
               >
-                <Flame className="w-4 h-4" />
+                <Flame className="w-3.5 h-3.5" />
                 <span>{turn.contradictionCount} contradiction{turn.contradictionCount !== 1 ? 's' : ''}</span>
               </button>
             )}
           </div>
 
-          {/* Suggested paths */}
+          {/* Inline evidence expansion */}
+          {showEvidence && (
+            <div className="pt-4 border-t border-pebble-gray/20 space-y-3">
+              <p className="text-[12px] uppercase tracking-wider text-muted-stone/60 font-medium">
+                Evidence grounding
+              </p>
+              <div className="space-y-2">
+                {turn.paperReferences.slice(0, 5).map((paperId) => {
+                  const paper = papers.find(p => p.id === paperId);
+                  if (!paper) return null;
+                  const isActive = activePaperId === paperId;
+                  return (
+                    <button
+                      key={paperId}
+                      onClick={() => onPaperClick(paperId)}
+                      className={`w-full text-left p-3 rounded-lg border transition-all ${
+                        isActive 
+                          ? 'bg-onyx-outline/5 border-onyx-outline/30' 
+                          : 'bg-white/40 border-pebble-gray/30 hover:border-pebble-gray/60'
+                      }`}
+                    >
+                      <p className="text-[13px] font-medium text-deep-shadow leading-snug">
+                        {paper.title}
+                      </p>
+                      <p className="text-[11px] text-muted-stone mt-1">
+                        {paper.authors[0]} et al. · {paper.year} · {paper.studyType}
+                      </p>
+                    </button>
+                  );
+                })}
+                {turn.paperReferences.length > 5 && (
+                  <button 
+                    onClick={() => onPaperClick(turn.paperReferences[0])}
+                    className="text-[12px] text-onyx-outline hover:text-deep-shadow transition-colors"
+                  >
+                    + {turn.paperReferences.length - 5} more papers
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Suggested paths - integrated, subtle */}
           {turn.suggestedPaths.length > 0 && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {turn.suggestedPaths.map((path, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => onSuggestedPath(path)}
-                  className="rounded-full border border-pebble-gray/60 bg-transparent px-3 py-1.5 text-[13px] text-deep-shadow hover:border-onyx-outline/40 hover:bg-onyx-outline/5 transition-all"
-                >
-                  {path}
-                </button>
-              ))}
+            <div className="pt-2">
+              <div className="flex flex-wrap gap-2">
+                {turn.suggestedPaths.map((path, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => onSuggestedPath(path)}
+                    className="text-[13px] text-onyx-outline hover:text-deep-shadow hover:underline transition-all underline-offset-2 decoration-onyx-outline/30"
+                  >
+                    {path}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
       </div>
     </div>
   );
+}
+
+// Format synthesis to handle bold sections
+function formatSynthesis(text: string): string {
+  // Convert **text** to <strong> for short answer emphasis
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-deep-shadow font-semibold">$1</strong>')
+    .replace(/\n/g, '<br />');
 }

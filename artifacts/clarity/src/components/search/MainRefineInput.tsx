@@ -1,9 +1,8 @@
 import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, ArrowUp } from "lucide-react";
 
 interface MainRefineInputProps {
-  onSubmit: (content: string) => Promise<void>;
+  onSubmit: (content: string) => void;
   isSubmitting?: boolean;
   placeholder?: string;
 }
@@ -11,49 +10,45 @@ interface MainRefineInputProps {
 export function MainRefineInput({ 
   onSubmit, 
   isSubmitting = false,
-  placeholder = "Ask a follow-up or refine this exploration..." 
+  placeholder = "Ask about dosage, timing, or contradictions..." 
 }: MainRefineInputProps) {
   const [draft, setDraft] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = draft.trim();
     if (!trimmed || isSubmitting) return;
-    try {
-      await onSubmit(trimmed);
-      setDraft("");
-    } catch {
-      // Keep draft for retry
-    }
+    onSubmit(trimmed);
+    setDraft("");
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
-      <div className="relative">
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          rows={3}
-          placeholder={placeholder}
-          className="w-full resize-none rounded-2xl border border-pebble-gray bg-white px-4 py-3 pr-12 text-[14px] text-deep-shadow placeholder:text-muted-stone/65 focus:outline-none focus:border-onyx-outline/40 leading-relaxed"
-          disabled={isSubmitting}
-        />
-        <Button
-          type="submit"
-          disabled={!draft.trim() || isSubmitting}
-          size="sm"
-          className="absolute right-3 bottom-3 h-8 w-8 p-0 bg-onyx-outline hover:bg-onyx-outline/90"
-        >
-          {isSubmitting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Send className="w-4 h-4" />
-          )}
-        </Button>
-      </div>
-      <p className="text-[11px] text-muted-stone leading-relaxed">
-        You can ask about the current evidence, narrow the scope, or explore a specific angle.
-      </p>
+    <form onSubmit={handleSubmit} className="relative">
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={2}
+        placeholder={placeholder}
+        className="w-full resize-none rounded-xl border border-pebble-gray/60 bg-white/80 px-4 py-3 pr-12 text-[14px] text-deep-shadow placeholder:text-muted-stone/50 focus:outline-none focus:border-onyx-outline/30 focus:bg-white transition-all leading-relaxed"
+        disabled={isSubmitting}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit(e);
+          }
+        }}
+      />
+      <button
+        type="submit"
+        disabled={!draft.trim() || isSubmitting}
+        className="absolute right-3 bottom-3 h-7 w-7 flex items-center justify-center rounded-md bg-onyx-outline/90 hover:bg-onyx-outline disabled:bg-pebble-gray/50 disabled:cursor-not-allowed transition-colors"
+      >
+        {isSubmitting ? (
+          <Loader2 className="w-3.5 h-3.5 text-white animate-spin" />
+        ) : (
+          <ArrowUp className="w-3.5 h-3.5 text-white" />
+        )}
+      </button>
     </form>
   );
 }

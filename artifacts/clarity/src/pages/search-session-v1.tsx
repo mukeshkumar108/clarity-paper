@@ -60,7 +60,7 @@ const initialTurns: TurnV1[] = [
     id: "turn-1",
     timestamp: new Date().toISOString(),
     role: "assistant",
-    synthesis: "Creatine appears to help with physical recovery during sleep deprivation, but the cognitive effects are genuinely mixed.\n\nHere's what the evidence shows:\n\n**Physical performance**: Two solid RCTs found creatine helped maintain power output and sleep efficiency during restriction. That's a real, measurable benefit for athletes.\n\n**Cognitive function**: This is where it gets interesting. Two studies disagree—one found +12% improvement in working memory, another found no effect at all. The discrepancy might be about when they tested (immediately vs after recovery sleep).\n\nThe bottom line: If you're an athlete facing sleep restriction, creatine is worth considering for physical recovery. For cognitive protection? The jury is still out.",
+    synthesis: "**Short answer:** Creatine helps physical performance during sleep deprivation, but podcasts often exaggerate how much it helps mentally.\n\n**The evidence:** Two solid RCTs found creatine maintained power output and sleep efficiency during restriction. That's real for athletes. But cognitive effects are genuinely mixed—one study found +12% working memory improvement, another found no effect at all.\n\n**So practically:** Facing a tough training session after poor sleep? Creatine is worth considering. Need to think clearly for a big decision? The evidence is shakier. The podcasts are highlighting one positive study while glossing over the mixed results.",
     evidenceCount: 5,
     newEvidenceCount: 5,
     contradictionCount: 1,
@@ -120,18 +120,19 @@ export default function SearchSessionV1Page({ id }: { id: string }) {
         id: `turn-${Date.now()}-assistant`,
         timestamp: new Date().toISOString(),
         role: "assistant",
-        synthesis: generateResponse(path),
+        synthesis: generateShortAnswerResponse(path),
         evidenceCount: 8,
         newEvidenceCount: 3,
-        contradictionCount: 0,
+        contradictionCount: path.toLowerCase().includes('contradiction') ? 1 : 0,
+        contradictions: path.toLowerCase().includes('contradiction') ? demoContradictions : undefined,
         paperReferences: ["smith-2023", "jones-2021", "chen-2022"],
-        suggestedPaths: ["Long-term effects?", "Population differences?", "Mechanism?"]
+        suggestedPaths: ["High-dose protocols", "How caffeine compares", "Long-term safety"]
       };
       
       setTurns(prev => [...prev, assistantTurn]);
       setIsExploring(false);
     }, 2000);
-  }, []);
+  }, [generateShortAnswerResponse]);
 
   const handleSubmit = useCallback((content: string) => {
     // Add user turn
@@ -156,24 +157,44 @@ export default function SearchSessionV1Page({ id }: { id: string }) {
         id: `turn-${Date.now()}-assistant`,
         timestamp: new Date().toISOString(),
         role: "assistant",
-        synthesis: generateResponse(content),
+        synthesis: generateShortAnswerResponse(content),
         evidenceCount: 8,
         newEvidenceCount: 3,
-        contradictionCount: 0,
+        contradictionCount: content.toLowerCase().includes('contradiction') ? 1 : 0,
+        contradictions: content.toLowerCase().includes('contradiction') ? demoContradictions : undefined,
         paperReferences: ["smith-2023", "jones-2021", "chen-2022"],
-        suggestedPaths: ["Long-term effects?", "Population differences?", "Mechanism?"]
+        suggestedPaths: ["High-dose protocols", "How caffeine compares", "Long-term safety"]
       };
       
       setTurns(prev => [...prev, assistantTurn]);
       setIsExploring(false);
     }, 2000);
-  }, []);
+  }, [generateShortAnswerResponse]);
 
   const handleCloseInspector = useCallback(() => {
     setInspectorOpen(false);
     setInspectorMode(null);
     setSelectedPaperId(null);
     setSelectedContradictionId(null);
+  }, []);
+
+  // Generate better mock responses with short answer format
+  const generateShortAnswerResponse = useCallback((query: string): string => {
+    const lowerQuery = query.toLowerCase();
+    
+    if (lowerQuery.includes('contradiction') || lowerQuery.includes('why')) {
+      return "**Short answer:** The contradiction is about timing—when they tested cognitive function.\n\n**The evidence:** Smith tested immediately after sleep deprivation and found +12% working memory improvement. Jones tested after recovery sleep and found no effect. This suggests creatine helps acute sleep loss (in the moment) but doesn't fix underlying sleep debt.\n\n**So practically:** If you need to perform right after a bad night's sleep, creatine might help. But it won't restore you to fully-rested cognitive performance.";
+    }
+    
+    if (lowerQuery.includes('dosage') || lowerQuery.includes('dose')) {
+      return "**Short answer:** 5g/day is standard, but the loading protocol matters.\n\n**The evidence:** Most studies used 20g/day for 5-7 days (loading), then 3-5g/day maintenance. The one study showing strong cognitive benefits used this protocol. Standard dosing without loading may not achieve brain saturation fast enough.\n\n**So practically:** If you want acute effects for a specific event, do the loading phase. For general use, standard 5g/day is fine but effects build over weeks.";
+    }
+    
+    if (lowerQuery.includes('timing') || lowerQuery.includes('when')) {
+      return "**Short answer:** Take it before the sleep deprivation, not after.\n\n**The evidence:** Studies where participants loaded creatine *before* sleep restriction showed benefits. Taking it after (like the next morning) doesn't help acutely because brain creatine levels don't rise immediately.\n\n**So practically:** If you know you'll have a bad sleep night, start creatine beforehand. It's not a morning-after fix.";
+    }
+    
+    return "**Short answer:** The evidence on this specific angle is limited.\n\n**What we know:** Current studies focus on athletic populations with acute sleep deprivation. Your question touches on areas not well-covered yet.\n\n**Options:** I can search for studies on chronic sleep deprivation, non-athletic populations, or compare to caffeine if helpful.";
   }, []);
 
   if (Number.isNaN(sessionId)) {
@@ -195,26 +216,26 @@ export default function SearchSessionV1Page({ id }: { id: string }) {
   return (
     <DashboardLayout>
       <div className="h-[calc(100vh-64px)] flex flex-col">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 py-3 border-b border-pebble-gray/30 bg-white/50 shrink-0">
-          <div className="flex items-center gap-3">
+        {/* Header - minimal, elegant */}
+        <header className="flex items-center justify-between px-6 py-3 border-b border-pebble-gray/20 bg-white shrink-0">
+          <div className="flex items-center gap-4">
             <button 
               onClick={() => navigate('/search')}
-              className="p-2 hover:bg-pebble-gray/50 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-pebble-gray/30 rounded-md transition-colors text-muted-stone hover:text-deep-shadow"
             >
-              <ChevronLeft className="w-5 h-5 text-muted-stone" />
+              <ChevronLeft className="w-4 h-4" />
             </button>
             <div className="flex items-center gap-2">
-              <Microscope className="w-5 h-5 text-onyx-outline" />
-              <h1 className="text-[16px] font-semibold text-deep-shadow">
+              <Microscope className="w-4 h-4 text-onyx-outline/70" />
+              <h1 className="text-[15px] font-medium text-deep-shadow">
                 Creatine and sleep deprivation
               </h1>
             </div>
           </div>
           
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] text-muted-stone hover:text-deep-shadow hover:bg-pebble-gray/50 rounded-lg transition-colors">
-              <Plus className="w-4 h-4" />
+            <button className="flex items-center gap-1.5 px-2 py-1 text-[12px] text-muted-stone hover:text-deep-shadow hover:bg-pebble-gray/30 rounded-md transition-colors">
+              <Plus className="w-3.5 h-3.5" />
               New
             </button>
           </div>
@@ -223,11 +244,12 @@ export default function SearchSessionV1Page({ id }: { id: string }) {
         {/* Main content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Investigation Thread - Center */}
-          <div className="flex-1 min-w-0">
+          <div className={`flex-1 min-w-0 bg-canvas-parchment/30 transition-all duration-300 ${inspectorOpen ? 'border-r border-pebble-gray/20' : ''}`}>
             <InvestigationThread
               turns={turns}
               papers={papers}
               isExploring={isExploring}
+              activePaperId={selectedPaperId}
               onPaperClick={handlePaperClick}
               onContradictionClick={handleContradictionClick}
               onSuggestedPath={handleSuggestedPath}
@@ -236,38 +258,21 @@ export default function SearchSessionV1Page({ id }: { id: string }) {
           </div>
 
           {/* Inspector - Right */}
-          {inspectorOpen && (
-            <Inspector
-              isOpen={inspectorOpen}
-              mode={inspectorMode}
-              papers={papers}
-              contradictions={contradictions}
-              selectedPaperId={selectedPaperId}
-              selectedContradictionId={selectedContradictionId}
-              onClose={handleCloseInspector}
-            />
-          )}
+          <div className={`transition-all duration-300 ${inspectorOpen ? 'w-[380px] opacity-100' : 'w-0 opacity-0 overflow-hidden'}`}>
+            {inspectorOpen && (
+              <Inspector
+                isOpen={inspectorOpen}
+                mode={inspectorMode}
+                papers={papers}
+                contradictions={contradictions}
+                selectedPaperId={selectedPaperId}
+                selectedContradictionId={selectedContradictionId}
+                onClose={handleCloseInspector}
+              />
+            )}
+          </div>
         </div>
       </div>
     </DashboardLayout>
   );
-}
-
-// Mock response generator for demo
-function generateResponse(query: string): string {
-  const lowerQuery = query.toLowerCase();
-  
-  if (lowerQuery.includes('contradiction') || lowerQuery.includes('why')) {
-    return "The contradiction likely stems from methodological differences. Smith tested cognitive function immediately after 48 hours of sleep deprivation, while Jones tested after participants had recovery sleep. This timing difference is crucial—creatine may help with acute sleep loss but not long-term cognitive recovery.\n\nAnother factor: Smith used a working memory test specific to athletic decision-making, while Jones used general cognitive assessments. The benefit may be domain-specific.";
-  }
-  
-  if (lowerQuery.includes('dosage') || lowerQuery.includes('dose')) {
-    return "Most studies used a loading phase of 20g/day for 5-7 days, followed by 3-5g/day maintenance. The Chen meta-analysis found effects were stronger with longer duration (>4 weeks).\n\nHowever, individual response varies significantly. Some people are 'responders' with noticeable effects, others see minimal benefit. Factors like muscle mass, diet (vegetarians see bigger effects), and baseline creatine levels all play a role.";
-  }
-  
-  if (lowerQuery.includes('timing') || lowerQuery.includes('when')) {
-    return "Timing appears to matter significantly. Studies where creatine was taken closer to sleep deprivation showed better effects than those with morning-only dosing.\n\nThis makes mechanistic sense: creatine helps maintain cellular energy (ATP) during metabolic stress. Taking it pre-deprivation means higher tissue levels when you need them most.";
-  }
-  
-  return "That's an interesting angle to explore. Based on the current evidence, we'd need to look at more studies specifically addressing this question. The current set focuses primarily on acute sleep deprivation in athletic populations.\n\nWould you like me to search for studies on long-term effects, different populations, or mechanism of action?";
 }
