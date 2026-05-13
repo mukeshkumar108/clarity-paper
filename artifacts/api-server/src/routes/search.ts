@@ -10,6 +10,7 @@ import { db, documentsTable, documentAnalysisTable, usersTable, searchSessionMes
 import { logger } from "../lib/logger";
 import { orchestrateSidebarInput } from "../lib/search/sidebarOrchestrator";
 import { planResearch } from "../lib/search/researchPlanner";
+import { synthesiseFollowUpAnswer } from "../lib/search/synthesizer";
 
 const router: IRouter = Router();
 
@@ -175,8 +176,8 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
     }
 
     const trimmed = content.trim();
-    const action = await orchestrateSidebarInput(session, trimmed);
-
+    
+    // Step 1: Save user message immediately
     const [userMessage] = await db
       .insert(searchSessionMessagesTable)
       .values({
@@ -190,56 +191,121 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
       })
       .returning();
 
-    let assistantKind: "system" | "answer" | "clarification" | "canvas_update" = "system";
-
-    if (
-      action.actionType === "answer_current_results" ||
-      action.actionType === "exhaustive_intent_transparency"
-    ) {
-      assistantKind = "answer";
-    } else if (action.actionType === "clarification_prompt") {
+    // Step 2: Orchestrator decides what to do and extracts user intent
+    const action = await orchestrateSidebarInput(session, trimmed);
+    
+    let assistantContent: string;
+    let assistantKind: "system" | "answer" | "clarification" | "canvas_update" = "answer";
+    let canvasChanged = false;
+    let retrievalPerformed = false;
+    let papersBefore = session.papers.length;
+    let papersAfter = papersBefore;
+    
+    // Step 3: Handle based on action type
+    if (action.actionType === "clarification_prompt") {
+      // Use orchestrator's reply for clarification questions
+      assistantContent = action.assistantReply || "I need a bit more clarity to help you properly. Could you tell me more about what you're looking for?";
       assistantKind = "clarification";
+      
+    } else if (action.actionType === "exhaustive_intent_transparency") {
+      // Use orchestrator's reply for scope transparency
+      assistantContent = action.assistantReply || "I should be transparent about the scope of what we're exploring here.";
+      assistantKind = "answer";
+      
+    } else if (action.actionType === "answer_current_results") {
+      // Synthesize answer from CURRENT evidence (no new retrieval)
+      assistantKind = "answer";
+      canvasChanged = false;
+      
+      const synthesis = await synthesiseFollowUpAnswer({
+        originalQuery: session.query,
+        followUpQuestion: trimmed,
+        userIntent: action.userIntent,
+        existingPapers: session.papers,
+        newPapers: [], // No new papers
+        previousSynthesis: session.synthesisText,
+        evidenceSnapshot: session.evidenceSnapshot,
+      });
+      
+      assistantContent = synthesis.synthesisText;
+      
     } else {
+      // refine_current_canvas or focused_retrieval_expansion - MAY need new evidence
       assistantKind = "canvas_update";
-      const effectiveQuery = action.refinedQuery?.trim() || `${session.query} ${trimmed}`;
-
+      
+      let papersForSynthesis: RankedPaper[] = session.papers;
+      let newPapers: RankedPaper[] = [];
+      
       if (action.actionType === "refine_current_canvas" && action.reuseCurrentPapers) {
-        const filteredPapers = applyPaperFilters(session, action.filters);
-
-        if (filteredPapers.length > 0) {
-          const refinedPlan = await planResearch(effectiveQuery);
-          const rebuilt = await buildSearchResultFromPapers(
-            effectiveQuery,
-            refinedPlan,
-            filteredPapers,
-          );
-          await overwriteSearchSession(id, rebuilt);
-        } else {
+        // Just filter existing papers
+        papersForSynthesis = applyPaperFilters(session, action.filters);
+        
+        if (papersForSynthesis.length === 0) {
+          // Filtered to nothing - need to retrieve
+          const effectiveQuery = action.refinedQuery?.trim() || `${session.query} ${trimmed}`;
           await rerunSearchIntoExistingSession(req.session.userId!, id, effectiveQuery);
+          retrievalPerformed = true;
         }
       } else {
+        // Need new retrieval
+        const effectiveQuery = action.refinedQuery?.trim() || `${session.query} ${trimmed}`;
         await rerunSearchIntoExistingSession(req.session.userId!, id, effectiveQuery);
+        retrievalPerformed = true;
       }
-
+      
+      // Get updated session after potential retrieval
+      let updatedSessionForSynthesis = session;
+      if (retrievalPerformed) {
+        updatedSessionForSynthesis = await getSearchSession(id, req.session.userId!) || session;
+        papersForSynthesis = updatedSessionForSynthesis.papers;
+        papersAfter = papersForSynthesis.length;
+        
+        // Find which papers are new (not in original session)
+        const originalPaperIds = new Set(session.papers.map(p => p.externalId));
+        newPapers = papersForSynthesis.filter(p => !originalPaperIds.has(p.externalId));
+      }
+      
+      canvasChanged = true;
+      
+      // Synthesize with delta context
+      const synthesis = await synthesiseFollowUpAnswer({
+        originalQuery: session.query,
+        followUpQuestion: trimmed,
+        userIntent: action.userIntent,
+        existingPapers: session.papers,
+        newPapers: newPapers,
+        previousSynthesis: session.synthesisText,
+        evidenceSnapshot: updatedSessionForSynthesis.evidenceSnapshot,
+      });
+      
+      assistantContent = synthesis.synthesisText;
     }
 
+    // Step 4: Save assistant message with synthesized content
     const [assistantMessage] = await db
       .insert(searchSessionMessagesTable)
       .values({
         sessionId: id,
         role: "assistant",
         kind: assistantKind,
-        content: action.assistantReply,
+        content: assistantContent,
         metadata: {
-          canvasChanged: action.actionType === "refine_current_canvas" || action.actionType === "focused_retrieval_expansion",
+          canvasChanged,
           actionType: action.actionType,
           focusBadges: action.focusBadges,
           focusSummary: action.focusSummary,
           retrievalMode: action.retrievalMode ?? undefined,
+          // Include retrieval delta info
+          retrievalDelta: retrievalPerformed ? {
+            papersBefore,
+            papersAfter,
+            newPaperCount: papersAfter - papersBefore,
+          } : undefined,
         },
       })
       .returning();
 
+    // Get final updated session
     const updatedSession = await getSearchSession(id, req.session.userId!);
 
     res.status(201).json({

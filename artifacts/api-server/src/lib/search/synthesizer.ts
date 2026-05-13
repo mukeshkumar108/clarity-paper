@@ -211,3 +211,195 @@ export async function synthesisePapers(
     followUpOptions: plan.followUpQuestions.slice(0, 4),
   };
 }
+
+// ============================================================================
+// FOLLOW-UP SYNTHESIS — Answers user questions with delta context
+// ============================================================================
+
+const followUpOutputSchema = z.object({
+  synthesisText: z.string(),
+  confidence: z.enum(["preliminary", "promising", "moderate", "strong"]),
+  followUpOptions: z.array(z.string()).min(2).max(4),
+  whatChanged: z.string().optional(),
+});
+
+export type FollowUpSynthesisOutput = z.infer<typeof followUpOutputSchema>;
+
+const FOLLOW_UP_SYNTHESIS_PROMPT = `You are Clarity answering a follow-up question in an ongoing investigation.
+
+Your job is to:
+1. Answer the user's specific follow-up question DIRECTLY
+2. Explain what changed or became clearer (if new evidence was retrieved)
+3. Ground everything in the provided papers
+4. Give a verdict first, then nuance
+
+CRITICAL DIFFERENCE FROM INITIAL SEARCH:
+- Initial search: "Here's what we found about X"
+- Follow-up: "You asked Y, here's the answer based on [existing + new] evidence, and here's what changed"
+
+REQUIRED STRUCTURE:
+
+**Short answer:** [Direct answer to their specific follow-up question - 1-2 sentences]
+
+**The evidence:** [What studies found, citing specific papers when possible]
+
+**What changed:** [ONLY if new papers were retrieved - what did we learn that we didn't know before? How did this clarify or change the picture?]
+
+**So practically:** [What this means for the user's actual question]
+
+EXAMPLE - Follow-up with New Evidence:
+User's follow-up: "Is intermittent fasting better than normal calorie restriction for insulin?"
+New papers retrieved: 3 head-to-head comparison studies
+
+Short answer: The evidence is genuinely mixed—IF is not clearly superior to CCR for insulin sensitivity, despite podcast claims.
+
+The evidence: I found 3 new RCTs comparing IF vs CCR head-to-head. Two found no significant difference in fasting insulin or HOMA-IR. One smaller study (n=28) favored IF, but the effect disappeared at 6-month follow-up. The similarity suggests the metabolic benefit comes from weight loss itself, not fasting timing.
+
+What changed: The initial synthesis suggested IF "may improve insulin sensitivity" based on studies without comparison groups. These new comparison studies show that benefit is likely from caloric deficit, not the fasting window. The "metabolic magic" claim is not supported by direct comparisons.
+
+So practically: For insulin health, choose whichever approach you'll actually stick to. The timing matters less than the total calories. Don't choose IF expecting unique metabolic benefits beyond weight loss.
+
+EXAMPLE - Follow-up from Current Evidence:
+User's follow-up: "Why do the papers disagree on cognitive effects?"
+No new papers needed
+
+Short answer: The contradiction is about timing—when they tested cognitive function.
+
+The evidence: Smith tested immediately after sleep deprivation and found +12% working memory improvement. Jones tested after recovery sleep and found no effect. This suggests creatine helps acute sleep loss (in the moment) but doesn't fix underlying sleep debt.
+
+So practically: If you need to perform right after a bad night's sleep, creatine might help. But it won't restore you to fully-rested cognitive performance. Plan accordingly.
+
+RULES:
+- ALWAYS answer the user's specific question directly (not a generic summary)
+- When new papers were retrieved, explain what changed from previous understanding
+- Use specific study details (n=, effect sizes, p-values if available)
+- When evidence contradicts, explain WHY (study design, population, timing)
+- Address podcast/headline claims explicitly if relevant
+- NEVER say "more research is needed" as the main answer
+- NEVER hedge so much that the answer becomes meaningless
+- Make judgment calls: "This is overhyped" / "This is actually solid" / "Here's the catch"
+
+CAUSAL LANGUAGE CONSTRAINT:
+Only use causal language ("causes", "leads to") for RCTs or meta-analyses. Use "associated with" for observational.
+
+Return strict JSON.`;
+
+interface FollowUpSynthesisParams {
+  originalQuery: string;
+  followUpQuestion: string;
+  userIntent: {
+    mainQuestion: string;
+    comparisonTarget: string | null;
+    specificOutcome: string | null;
+  };
+  existingPapers: RankedPaper[];
+  newPapers: RankedPaper[];
+  previousSynthesis: string;
+  evidenceSnapshot: EvidenceSnapshot;
+}
+
+function formatPapersForFollowUp(papers: RankedPaper[], label: string): string {
+  if (papers.length === 0) return `${label}: None`;
+  
+  return papers
+    .slice(0, 8)
+    .map((p, i) => {
+      const abstract = p.abstract.slice(0, 500);
+      const authors = p.authors.length > 0
+        ? p.authors.slice(0, 3).join(", ") + (p.authors.length > 3 ? " et al." : "")
+        : "Unknown authors";
+      return [
+        `--- ${label} Paper ${i + 1} ---`,
+        `ID: ${p.externalId}`,
+        `Title: ${p.title}`,
+        `Authors: ${authors}`,
+        `Year: ${p.year ?? "Unknown"}`,
+        `Study: ${p.studyDesign} | Population: ${p.populationType}`,
+        `Abstract: ${abstract}${p.abstract.length > 500 ? "..." : ""}`,
+      ].join("\n");
+    })
+    .join("\n\n");
+}
+
+export async function synthesiseFollowUpAnswer(
+  params: FollowUpSynthesisParams,
+): Promise<FollowUpSynthesisOutput> {
+  const {
+    originalQuery,
+    followUpQuestion,
+    userIntent,
+    existingPapers,
+    newPapers,
+    previousSynthesis,
+    evidenceSnapshot,
+  } = params;
+
+  const hasNewPapers = newPapers.length > 0;
+  const allPapers = [...existingPapers, ...newPapers];
+  
+  const userMessage = [
+    `ORIGINAL QUERY: ${originalQuery}`,
+    `PREVIOUS SYNTHESIS: ${previousSynthesis.slice(0, 800)}`,
+    "",
+    `FOLLOW-UP QUESTION: ${followUpQuestion}`,
+    `USER'S REAL QUESTION: ${userIntent.mainQuestion}`,
+    userIntent.comparisonTarget ? `COMPARISON: vs ${userIntent.comparisonTarget}` : "",
+    userIntent.specificOutcome ? `SPECIFIC OUTCOME: ${userIntent.specificOutcome}` : "",
+    "",
+    `RETRIEVAL STATUS: ${hasNewPapers ? `Retrieved ${newPapers.length} new papers` : "Using existing evidence only"}`,
+    "",
+    `EVIDENCE SNAPSHOT:`,
+    `- Meta-analyses: ${evidenceSnapshot.metaAnalyses}`,
+    `- RCTs: ${evidenceSnapshot.rcts}`,
+    `- Total papers: ${allPapers.length} (${existingPapers.length} existing + ${newPapers.length} new)`,
+    "",
+    formatPapersForFollowUp(existingPapers, "EXISTING"),
+    "",
+    formatPapersForFollowUp(newPapers, "NEW"),
+  ].filter(Boolean).join("\n");
+
+  const attempts = [
+    { label: "primary", model: SEARCH_MODEL, timeoutMs: 60_000 },
+    { label: "backup", model: SEARCH_BACKUP_MODEL, timeoutMs: 90_000 },
+  ] as const;
+
+  let lastError: unknown = null;
+
+  for (const attempt of attempts) {
+    try {
+      const raw = await callLLM(
+        FOLLOW_UP_SYNTHESIS_PROMPT,
+        userMessage,
+        followUpOutputSchema,
+        { model: attempt.model, temperature: 0.3, timeoutMs: attempt.timeoutMs },
+      );
+
+      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const result = followUpOutputSchema.parse(data);
+      
+      logger.info(
+        { model: attempt.model, hasNewPapers, query: followUpQuestion },
+        "Follow-up synthesis succeeded",
+      );
+      
+      return result;
+    } catch (err) {
+      lastError = err;
+      logger.warn(
+        { err, model: attempt.model, attempt: attempt.label, query: followUpQuestion },
+        "Follow-up synthesis attempt failed",
+      );
+    }
+  }
+
+  logger.error(
+    { err: lastError, query: followUpQuestion },
+    "Follow-up synthesis failed after retries",
+  );
+  
+  return {
+    synthesisText: `I searched for evidence on your follow-up question, but the synthesis didn't come together cleanly. The papers ${hasNewPapers ? "I found" : "in this session"} are worth reviewing directly—they likely contain the answer, but I couldn't synthesize it cleanly this time.`,
+    confidence: "preliminary",
+    followUpOptions: ["Try rephrasing your question", "Look at the papers directly"],
+  };
+}
