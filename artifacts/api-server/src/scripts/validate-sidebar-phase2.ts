@@ -223,7 +223,7 @@ async function runScenario(scenario: Scenario): Promise<ValidationResult> {
       }
     }
 
-    await persistMessage(initial.sessionId, "assistant", assistantKind, action.assistantReply, {
+    await persistMessage(initial.sessionId, "assistant", assistantKind, action.assistantReply ?? "", {
       canvasChanged: canvasMutated,
       actionType: action.actionType,
       focusBadges: action.focusBadges,
@@ -248,7 +248,7 @@ async function runScenario(scenario: Scenario): Promise<ValidationResult> {
       usedCurrentPapers,
       focusSummaryBefore,
       focusSummaryAfter: updated.focusState.summary,
-      assistantReply: action.assistantReply,
+      assistantReply: action.assistantReply ?? "",
       papersBefore,
       papersAfter: updated.papers.length,
       followUpsAfter: updated.followUpOptions.slice(0, 3),

@@ -330,7 +330,7 @@ function normalizeAction(
   if (
     action.actionType === "clarification_prompt" &&
     /(^|\b)(i will|i narrowed|i filtered|i updated|refreshed the canvas|updated the canvas)(\b|$)/i.test(
-      action.assistantReply,
+      action.assistantReply ?? "",
     )
   ) {
     return {
