@@ -16,6 +16,7 @@ import DocumentView from "@/pages/document-view";
 import DocumentQA from "@/pages/document-qa";
 import Search from "@/pages/search";
 import SearchSessionPage from "@/pages/search-session";
+import SearchSessionV1Page from "@/pages/search-session-v1";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,6 +55,9 @@ function Router() {
       </Route>
       <Route path="/search/:id">
         {(params) => <ProtectedRoute><SearchSessionPage id={params.id} /></ProtectedRoute>}
+      </Route>
+      <Route path="/search-v1/:id">
+        {(params) => <ProtectedRoute><SearchSessionV1Page id={params.id} /></ProtectedRoute>}
       </Route>
       <Route path="/search">
         <ProtectedRoute><Search /></ProtectedRoute>
