@@ -84,6 +84,26 @@ export default function SearchSessionV1Page({ id }: { id: string }) {
   const [selectedPaperId, setSelectedPaperId] = useState<string | null>(null);
   const [selectedContradictionId, setSelectedContradictionId] = useState<string | null>(null);
 
+  // Generate better mock responses with short answer format
+  // MUST be defined BEFORE handlers that use it
+  const generateShortAnswerResponse = useCallback((query: string): string => {
+    const lowerQuery = query.toLowerCase();
+    
+    if (lowerQuery.includes('contradiction') || lowerQuery.includes('why')) {
+      return "**Short answer:** The contradiction is about timing—when they tested cognitive function.\n\n**The evidence:** Smith tested immediately after sleep deprivation and found +12% working memory improvement. Jones tested after recovery sleep and found no effect. This suggests creatine helps acute sleep loss (in the moment) but doesn't fix underlying sleep debt.\n\n**So practically:** If you need to perform right after a bad night's sleep, creatine might help. But it won't restore you to fully-rested cognitive performance.";
+    }
+    
+    if (lowerQuery.includes('dosage') || lowerQuery.includes('dose')) {
+      return "**Short answer:** 5g/day is standard, but the loading protocol matters.\n\n**The evidence:** Most studies used 20g/day for 5-7 days (loading), then 3-5g/day maintenance. The one study showing strong cognitive benefits used this protocol. Standard dosing without loading may not achieve brain saturation fast enough.\n\n**So practically:** If you want acute effects for a specific event, do the loading phase. For general use, standard 5g/day is fine but effects build over weeks.";
+    }
+    
+    if (lowerQuery.includes('timing') || lowerQuery.includes('when')) {
+      return "**Short answer:** Take it before the sleep deprivation, not after.\n\n**The evidence:** Studies where participants loaded creatine *before* sleep restriction showed benefits. Taking it after (like the next morning) doesn't help acutely because brain creatine levels don't rise immediately.\n\n**So practically:** If you know you'll have a bad sleep night, start creatine beforehand. It's not a morning-after fix.";
+    }
+    
+    return "**Short answer:** The evidence on this specific angle is limited.\n\n**What we know:** Current studies focus on athletic populations with acute sleep deprivation. Your question touches on areas not well-covered yet.\n\n**Options:** I can search for studies on chronic sleep deprivation, non-athletic populations, or compare to caffeine if helpful.";
+  }, []);
+
   // Handlers
   const handlePaperClick = useCallback((paperId: string) => {
     setSelectedPaperId(paperId);
@@ -176,25 +196,6 @@ export default function SearchSessionV1Page({ id }: { id: string }) {
     setInspectorMode(null);
     setSelectedPaperId(null);
     setSelectedContradictionId(null);
-  }, []);
-
-  // Generate better mock responses with short answer format
-  const generateShortAnswerResponse = useCallback((query: string): string => {
-    const lowerQuery = query.toLowerCase();
-    
-    if (lowerQuery.includes('contradiction') || lowerQuery.includes('why')) {
-      return "**Short answer:** The contradiction is about timing—when they tested cognitive function.\n\n**The evidence:** Smith tested immediately after sleep deprivation and found +12% working memory improvement. Jones tested after recovery sleep and found no effect. This suggests creatine helps acute sleep loss (in the moment) but doesn't fix underlying sleep debt.\n\n**So practically:** If you need to perform right after a bad night's sleep, creatine might help. But it won't restore you to fully-rested cognitive performance.";
-    }
-    
-    if (lowerQuery.includes('dosage') || lowerQuery.includes('dose')) {
-      return "**Short answer:** 5g/day is standard, but the loading protocol matters.\n\n**The evidence:** Most studies used 20g/day for 5-7 days (loading), then 3-5g/day maintenance. The one study showing strong cognitive benefits used this protocol. Standard dosing without loading may not achieve brain saturation fast enough.\n\n**So practically:** If you want acute effects for a specific event, do the loading phase. For general use, standard 5g/day is fine but effects build over weeks.";
-    }
-    
-    if (lowerQuery.includes('timing') || lowerQuery.includes('when')) {
-      return "**Short answer:** Take it before the sleep deprivation, not after.\n\n**The evidence:** Studies where participants loaded creatine *before* sleep restriction showed benefits. Taking it after (like the next morning) doesn't help acutely because brain creatine levels don't rise immediately.\n\n**So practically:** If you know you'll have a bad sleep night, start creatine beforehand. It's not a morning-after fix.";
-    }
-    
-    return "**Short answer:** The evidence on this specific angle is limited.\n\n**What we know:** Current studies focus on athletic populations with acute sleep deprivation. Your question touches on areas not well-covered yet.\n\n**Options:** I can search for studies on chronic sleep deprivation, non-athletic populations, or compare to caffeine if helpful.";
   }, []);
 
   if (Number.isNaN(sessionId)) {
