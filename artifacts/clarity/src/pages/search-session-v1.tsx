@@ -22,7 +22,7 @@ function transformPaper(rankedPaper: RankedPaper): PaperV1 {
     abstract: rankedPaper.abstract,
     studyType: mapStudyType(rankedPaper.studyDesign),
     sampleSize: undefined, // Not always available in RankedPaper
-    doi: rankedPaper.doi,
+    doi: rankedPaper.doi ?? undefined,
   };
 }
 
