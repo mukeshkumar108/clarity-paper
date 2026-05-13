@@ -11,6 +11,9 @@ import { logger } from "../lib/logger";
 import { orchestrateSidebarInput } from "../lib/search/sidebarOrchestrator";
 import { planResearch } from "../lib/search/researchPlanner";
 import { synthesiseFollowUpAnswer } from "../lib/search/synthesizer";
+import { validateGrounding } from "../lib/search/groundingValidator";
+import { buildEvidenceSpans, computeSpanDiagnostics } from "../lib/search/evidenceSpans";
+import type { EvidenceSpan, GroundingDiagnostics } from "../lib/search/types";
 
 const router: IRouter = Router();
 
@@ -226,6 +229,15 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
         previousSynthesis: session.synthesisText,
         evidenceSnapshot: session.evidenceSnapshot,
       });
+
+      // P0: Grounding validation on follow-up synthesis
+      const grounding = validateGrounding(synthesis.synthesisText, session.papers, session.evidenceSnapshot);
+      if (grounding.unsupportedNumericClaims > 0 || grounding.causalOverreach || grounding.studiesShowViolations > 0 || grounding.modelPriorLeakage > 0) {
+        logger.warn({ unsupported: grounding.unsupportedNumericClaims, causalOverreach: grounding.causalOverreach, studiesShowViolations: grounding.studiesShowViolations, modelPriorLeakage: grounding.modelPriorLeakage }, "Grounding issues in follow-up (answer_current_results)");
+      }
+      const followUpEvidenceSpans = buildEvidenceSpans(synthesis.synthesisText, session.papers, session.plan.entities);
+      const spanDiag = computeSpanDiagnostics(followUpEvidenceSpans);
+      logger.debug({ totalClaims: spanDiag.totalClaims, claimsWithAnySupport: spanDiag.claimsWithAnySupport }, "Follow-up evidence span diagnostics (answer_current_results)");
       
       assistantContent = synthesis.synthesisText;
       
@@ -277,6 +289,15 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
         previousSynthesis: session.synthesisText,
         evidenceSnapshot: updatedSessionForSynthesis.evidenceSnapshot,
       });
+
+      // P0: Grounding validation on follow-up synthesis
+      const grounding = validateGrounding(synthesis.synthesisText, papersForSynthesis, updatedSessionForSynthesis.evidenceSnapshot);
+      if (grounding.unsupportedNumericClaims > 0 || grounding.causalOverreach || grounding.studiesShowViolations > 0 || grounding.modelPriorLeakage > 0) {
+        logger.warn({ unsupported: grounding.unsupportedNumericClaims, causalOverreach: grounding.causalOverreach, studiesShowViolations: grounding.studiesShowViolations, modelPriorLeakage: grounding.modelPriorLeakage }, "Grounding issues in follow-up (canvas_update)");
+      }
+      const followUpEvidenceSpans = buildEvidenceSpans(synthesis.synthesisText, papersForSynthesis, session.plan.entities);
+      const spanDiag = computeSpanDiagnostics(followUpEvidenceSpans);
+      logger.debug({ totalClaims: spanDiag.totalClaims, claimsWithAnySupport: spanDiag.claimsWithAnySupport }, "Follow-up evidence span diagnostics (canvas_update)");
       
       assistantContent = synthesis.synthesisText;
     }

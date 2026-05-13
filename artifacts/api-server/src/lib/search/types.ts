@@ -20,6 +20,10 @@ export interface ResearchPlan {
   exclusionCriteria: string[];
   desiredEvidenceTypes: string[];
   followUpQuestions: string[];
+  /** P2: Whether the user is comparing two interventions/approaches */
+  isComparison: boolean;
+  /** P2: The comparison target, e.g. "continuous calorie restriction" */
+  comparisonTarget: string | null;
 }
 
 export type StudyDesign =
@@ -40,6 +44,17 @@ export type EvidenceBucket =
   | "mechanistic"
   | "background"
   | "conflicting";
+
+export type EvidenceFitLabel = "direct" | "adjacent" | "weak" | "mismatch";
+
+export interface EvidenceFit {
+  interventionMatch: "exact" | "close" | "broader_class" | "different";
+  outcomeMatch: "exact" | "related" | "different";
+  populationMatch: "exact" | "overlapping" | "different";
+  findingDirection: "supports_claim" | "mixed" | "null" | "contradicts" | "unrelated";
+  isHeadToHead: boolean;
+  overall: EvidenceFitLabel;
+}
 
 export interface RetrievedPaper {
   doi: string | null;
@@ -67,6 +82,7 @@ export interface RankedPaper extends RetrievedPaper {
   evidenceBucket: EvidenceBucket;
   plainSummary: string;
   relevanceScore?: number; // 0–1 from Cohere Rerank; absent when reranker is skipped
+  evidenceFit?: EvidenceFit; // P1: per-paper question-answer fit
 }
 
 export interface EvidenceSnapshot {
@@ -128,6 +144,7 @@ export interface RetrievalQualityScoreComponents {
   interventionMatch: number;
   populationMatch: number;
   evidenceTypeBonus: number;
+  evidenceFitBonus: number;
   offTopicPenalty: number;
   guidelinePollutionPenalty: number;
   entityConflationPenalty: number;

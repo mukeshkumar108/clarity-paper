@@ -66,7 +66,7 @@ async function runSearchJourney(query: string) {
   const rawPapers = await retrievePlannedPapers(plan);
   const deduplicated = filterGuidelineDocuments(deduplicatePapers(rawPapers));
   const reranked = await rerankByRelevance(plan.normalizedEnglishQuestion, deduplicated);
-  const vetoed = await applyTopicalVeto(plan, rankPapers(reranked, plan.entities));
+  const vetoed = await applyTopicalVeto(plan, rankPapers(reranked, plan));
   let ranked = filterTopicallyWeakPapers(vetoed, plan);
   const judgment = judgeRetrievalQuality(ranked, plan);
 

@@ -26,6 +26,17 @@ export type EvidenceBucket =
   | "background"
   | "conflicting";
 
+export type EvidenceFitLabel = "direct" | "adjacent" | "weak" | "mismatch";
+
+export interface EvidenceFit {
+  interventionMatch: "exact" | "close" | "broader_class" | "different";
+  outcomeMatch: "exact" | "related" | "different";
+  populationMatch: "exact" | "overlapping" | "different";
+  findingDirection: "supports_claim" | "mixed" | "null" | "contradicts" | "unrelated";
+  isHeadToHead: boolean;
+  overall: EvidenceFitLabel;
+}
+
 /** P5 taxonomy — more epistemically honest than direct/indirect/contextual */
 export type SupportType = "strongly_supported" | "partially_supported" | "related_evidence";
 
@@ -41,6 +52,8 @@ export interface ResearchPlan {
   directQueryVariants: string[];
   contextQueryVariants: string[];
   followUpQuestions: string[];
+  isComparison?: boolean;
+  comparisonTarget?: string | null;
 }
 
 export interface RankedPaper {
@@ -62,6 +75,7 @@ export interface RankedPaper {
   evidenceScore: number;
   evidenceBucket: EvidenceBucket;
   plainSummary: string;
+  evidenceFit?: EvidenceFit;
 }
 
 export interface EvidenceSnapshot {

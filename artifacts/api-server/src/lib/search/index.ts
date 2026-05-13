@@ -492,7 +492,7 @@ export async function runSearch(
   const rerankedDeduplicated = await rerankByRelevance(plan.normalizedEnglishQuestion, deduplicated);
   const vetoedDeduplicated = await applyTopicalVeto(
     plan,
-    rankPapers(rerankedDeduplicated, plan.entities),
+    rankPapers(rerankedDeduplicated, plan),
   );
 
   // 5. Rank + bucket (evidence quality hierarchy; relevance used as within-bucket tie-breaker)

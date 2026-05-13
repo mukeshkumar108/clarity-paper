@@ -20,9 +20,10 @@ User query
   → deduplicatePapers      (DOI + title fuzzy dedup, guideline filtering)
   → rerankByRelevance      (Cohere Rerank 4 Fast: semantic relevance score per paper, soft off-topic filter)
   → applyTopicalVeto       (LLM: cheap conservative veto for obviously irrelevant intervention/condition mismatches)
-  → enrichWithUnpaywall    (open-access PDF links, runs in parallel with synthesis)
   → rankPapers             (evidence scoring → evidenceBucket; relevance used as within-bucket tie-breaker)
-  → judgeRetrievalQuality  (LLM: topical relevance, off-topic detection)
+  → evaluateEvidenceFit    (CPU: deterministic per-paper question-answer fit — direct/adjacent/weak/mismatch;
+                            feeds fit-priority sort, synthesis labels, and judge quality component)
+  → judgeRetrievalQuality  (LLM: topical relevance, off-topic detection; includes evidence-fit bonus)
   → [repairRetrieval]      (optional: re-retrieve with tightened queries — Gemini Flash Lite)
   → synthesisePapers       (LLM: evidence-constrained synthesis text — Gemini Flash Lite)
   → buildEvidenceSpans     (CPU: claim → snippet matching, no LLM)
@@ -88,6 +89,41 @@ Papers are scored and placed into one of five buckets (displayed in this order):
 | `mechanistic` | Animal studies, in vitro |
 | `background` | Editorials, reviews without primary data |
 
+### Evidence-Fit Evaluation (`evidenceFit.ts`)
+
+New deterministic stage (no LLM) that evaluates how well each retrieved paper actually answers the user's question — distinct from paper quality or topical relevance.
+
+**Per-paper dimensions:**
+- **Intervention match** (exact / close / broader_class / different): Does the paper study the exact intervention the user asked about?
+- **Outcome match** (exact / related / different): Does the paper measure the specific outcome the user cares about? (Uses planner's `hiddenGoals`)
+- **Population match** (exact / overlapping / different): Is the population the user asked about? (Uses planner's `inclusionCriteria` + disease bleed detection)
+- **Finding direction** (supports_claim / mixed / null / contradicts / unrelated): Do the paper's findings support or contradict the expected direction?
+- **Head-to-head detection**: For comparison queries, checks if the paper actually compares interventions head-to-head
+
+**Overall fit labels:** `direct` → `adjacent` → `weak` → `mismatch`
+
+**Downstream effects:**
+- `rankPapers` sorts fit-first (direct before adjacent before weak before mismatch)
+- `synthesizer` receives fit labels per paper: "DIRECTLY on the question" vs "ADJACENT — related but not a direct answer"
+- `retrievalJudge` quality score includes an `evidenceFitBonus` component (10% weight)
+
+### Comparison Awareness (Planner P2)
+
+The planner now detects comparison intent (`isComparison: boolean`, `comparisonTarget: string`) from queries like "is X better than Y?" or "X vs Y". The synthesis prompt receives explicit instructions to:
+1. Distinguish head-to-head evidence from single-intervention studies
+2. Flag when no direct comparison evidence exists
+3. Separate indirect evidence from mechanism/inference
+4. Explicitly name missing evidence for the comparison
+
+### Follow-Up Grounding (P0)
+
+Follow-up answers (`answer_current_results`, `refine_current_canvas`, `focused_retrieval_expansion`) now run through the same grounding validation (`validateGrounding`) and evidence span extraction (`buildEvidenceSpans`) as initial search. Previously, follow-up synthesis bypassed these quality gates entirely.
+
+Follow-up synthesis also includes:
+- **Claim deduplication**: Previous synthesis claims are extracted and passed as "DO NOT REPEAT" constraints
+- **`whatChanged` enforcement**: When new papers are retrieved, the `whatChanged` field is required; a retry is triggered if missing or inadequate
+- **Desired evidence types**: `plan.desiredEvidenceTypes` applies a soft penalty (0.85×) to papers not matching the user's preferred evidence levels
+
 ### Evidence Span Engine (`evidenceSpans.ts`)
 
 Matches synthesis claims to verbatim abstract sentences — no LLM, no embeddings.
@@ -116,6 +152,16 @@ The synthesis prompt has four hard rules (see `PROMPTS.md`):
 - **No generalisation** beyond the population studied
 - **Abstraction awareness** — must acknowledge working from abstracts
 - **Uncertainty** — must surface contradictions between papers
+
+**Comparison constraints (added P2):**
+- For comparison queries, must distinguish head-to-head evidence from indirect evidence
+- Must explicitly say when no direct comparison evidence exists
+- Must not present single-intervention evidence as if it answers a comparison question
+
+**Follow-up synthesis constraints (added P3):**
+- Must not repeat claims from previous synthesis (deduplication enforced)
+- Must fill `whatChanged` when new papers are retrieved (retry enforced)
+- Must use fit labels to prioritize claims from directly-relevant papers
 
 ### Retrieval Judge & Repair Loop
 

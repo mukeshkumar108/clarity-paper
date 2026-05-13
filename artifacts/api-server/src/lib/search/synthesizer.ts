@@ -2,6 +2,7 @@ import { z } from "zod";
 import { callLLM } from "../openRouterProvider";
 import { logger } from "../logger";
 import type { RankedPaper, ResearchPlan, EvidenceSnapshot } from "./types";
+import { extractClaims } from "./evidenceSpans";
 
 // Search synthesis is a short 3-4 sentence summary — Gemini Flash is fast and
 // good enough. DeepSeek would be overkill here and causes 60-90s+ timeouts.
@@ -114,6 +115,11 @@ function formatPapersForSynthesis(papers: RankedPaper[]): string {
         p.authors.length > 0
           ? p.authors.slice(0, 3).join(", ") + (p.authors.length > 3 ? " et al." : "")
           : "Unknown authors";
+      const fitLabel = p.evidenceFit?.overall ?? "weak";
+      const fitNote = fitLabel === "direct" ? "DIRECTLY on the user's question" :
+                      fitLabel === "adjacent" ? "ADJACENT — related but not a direct answer" :
+                      fitLabel === "weak" ? "WEAK fit — may not fully address the question" :
+                      "MISMATCH — probably not answering this question";
       return [
         `--- Paper ${i + 1} ---`,
         `externalId: ${p.externalId}`,
@@ -122,6 +128,7 @@ function formatPapersForSynthesis(papers: RankedPaper[]): string {
         `Year: ${p.year ?? "Unknown"}`,
         `Study design: ${p.studyDesign} | Population: ${p.populationType}`,
         `Evidence bucket: ${p.evidenceBucket}`,
+        `Evidence fit: ${fitLabel} (${fitNote})`,
         `Abstract: ${abstract}${p.abstract.length > 600 ? "..." : ""}`,
       ].join("\n");
     })
@@ -160,8 +167,14 @@ export async function synthesisePapers(
     `DETECTED LANGUAGE: ${plan.detectedLanguage}`,
     `RESPONSE LANGUAGE: ${plan.responseLanguage}`,
     `INTENT: ${plan.intentType}`,
+    plan.isComparison
+      ? `⚠️ COMPARISON QUESTION: The user is comparing two approaches. Target to compare against: "${plan.comparisonTarget}". Prioritize papers that compare these head-to-head. If no direct comparison papers exist, say so explicitly — do NOT present single-intervention evidence as if it answers the comparison. Distinguish between: (1) direct head-to-head evidence, (2) indirect evidence from single-intervention studies, (3) mechanism/inference, (4) what the evidence cannot tell us about the comparison.`
+      : "",
+    plan.desiredEvidenceTypes?.length
+      ? `PREFERRED EVIDENCE TYPES: ${plan.desiredEvidenceTypes.join(", ")}. Prioritize papers matching these types. If few or none exist, note that explicitly.`
+      : "",
     `KEY ENTITIES: ${plan.entities.join(", ")}`,
-    `HIDDEN GOALS: ${plan.hiddenGoals.join(", ")}`,
+    `HIDDEN GOALS (the angles the user most cares about — frame the answer toward these when evidence supports it): ${plan.hiddenGoals.join(", ")}`,
     "",
     `EVIDENCE SUMMARY:`,
     `- Meta-analyses / systematic reviews: ${snapshot.metaAnalyses}`,
@@ -308,6 +321,7 @@ function formatPapersForFollowUp(papers: RankedPaper[], label: string): string {
       const authors = p.authors.length > 0
         ? p.authors.slice(0, 3).join(", ") + (p.authors.length > 3 ? " et al." : "")
         : "Unknown authors";
+      const fitLabel = p.evidenceFit?.overall ?? "weak";
       return [
         `--- ${label} Paper ${i + 1} ---`,
         `ID: ${p.externalId}`,
@@ -315,6 +329,7 @@ function formatPapersForFollowUp(papers: RankedPaper[], label: string): string {
         `Authors: ${authors}`,
         `Year: ${p.year ?? "Unknown"}`,
         `Study: ${p.studyDesign} | Population: ${p.populationType}`,
+        `Fit: ${fitLabel}${p.evidenceFit?.isHeadToHead ? " (head-to-head comparison)" : ""}`,
         `Abstract: ${abstract}${p.abstract.length > 500 ? "..." : ""}`,
       ].join("\n");
     })
@@ -336,17 +351,31 @@ export async function synthesiseFollowUpAnswer(
 
   const hasNewPapers = newPapers.length > 0;
   const allPapers = [...existingPapers, ...newPapers];
-  
+
+  // P3: Extract claims from previous synthesis to prevent repetition
+  const previousClaims = extractClaims(previousSynthesis);
+  const deduplicationBlock = previousClaims.length > 0
+    ? [
+        "DO NOT REPEAT — these claims were already established in the previous synthesis:",
+        ...previousClaims.map((c, i) => `  [${i + 1}] ${c}`),
+        "",
+        "Only surface what changed, what is new, or what directly answers the follow-up question. You may restate ONE sentence from the previous synthesis for context if necessary.",
+        "",
+      ]
+    : [];
+
   const userMessage = [
     `ORIGINAL QUERY: ${originalQuery}`,
     `PREVIOUS SYNTHESIS: ${previousSynthesis.slice(0, 800)}`,
     "",
+    ...deduplicationBlock,
     `FOLLOW-UP QUESTION: ${followUpQuestion}`,
     `USER'S REAL QUESTION: ${userIntent.mainQuestion}`,
     userIntent.comparisonTarget ? `COMPARISON: vs ${userIntent.comparisonTarget}` : "",
     userIntent.specificOutcome ? `SPECIFIC OUTCOME: ${userIntent.specificOutcome}` : "",
     "",
     `RETRIEVAL STATUS: ${hasNewPapers ? `Retrieved ${newPapers.length} new papers` : "Using existing evidence only"}`,
+    hasNewPapers ? `CRITICAL: You MUST fill the "whatChanged" field. Describe what the new papers added that the previous synthesis did not cover. Be specific — name which papers revealed what, and how the picture changed.` : "",
     "",
     `EVIDENCE SNAPSHOT:`,
     `- Meta-analyses: ${evidenceSnapshot.metaAnalyses}`,
@@ -376,6 +405,31 @@ export async function synthesiseFollowUpAnswer(
 
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
       const result = followUpOutputSchema.parse(data);
+
+      // P3: whatChanged retry — if new papers were retrieved but whatChanged is missing/wrong, retry once
+      if (hasNewPapers && (!result.whatChanged || result.whatChanged.trim().length < 40 ||
+          result.whatChanged.includes("no new") || result.whatChanged.includes("same as") ||
+          result.whatChanged.includes("unchanged"))) {
+        logger.warn(
+          { query: followUpQuestion, whatChanged: result.whatChanged },
+          "whatChanged missing or weak despite new papers — retrying with stronger prompt",
+        );
+        const retryMessage = userMessage + "\n\n⚠️ RETRY: Your previous response was REJECTED because the whatChanged field was missing or inadequate. You retrieved new papers. These papers contain information NOT in the existing set. Fill whatChanged with: (1) what the new papers specifically found, (2) how this differs from or adds to the previous understanding, (3) what changed about the evidence picture. Be specific — name papers and findings.";
+        const retryRaw = await callLLM(
+          FOLLOW_UP_SYNTHESIS_PROMPT,
+          retryMessage,
+          followUpOutputSchema,
+          { model: attempts[0].model, temperature: 0.3, timeoutMs: 60_000 },
+        );
+        const retryData = typeof retryRaw === "string" ? JSON.parse(retryRaw) : retryRaw;
+        const retryResult = followUpOutputSchema.parse(retryData);
+        if (retryResult.whatChanged && retryResult.whatChanged.trim().length >= 40) {
+          logger.info({ query: followUpQuestion }, "whatChanged retry succeeded");
+          return retryResult;
+        }
+        // Fall through to return the original result anyway (better than failing)
+        logger.warn({ query: followUpQuestion }, "whatChanged retry still inadequate — using original");
+      }
       
       logger.info(
         { model: attempt.model, hasNewPapers, query: followUpQuestion },

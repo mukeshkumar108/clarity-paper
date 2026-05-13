@@ -2,6 +2,82 @@
 
 All notable product and engineering changes should be tracked here.
 
+## 2026-05-13
+
+### Search — Pipeline Hardening: Evidence-Fit, Comparison Awareness, Follow-Up Grounding (P0–P3)
+
+**Goal:** Close the quality gap between initial search and follow-up answers, make the pipeline aware of whether papers actually answer the question, and wire up planner intelligence that was previously produced but never consumed.
+
+This is an orchestration-only change. No new LLM calls. No UI changes. All changes are in the backend pipeline and synthesis contracts.
+
+#### P0 — Follow-Up Grounding (Critical Bug Fix)
+
+Follow-up answers previously bypassed all quality gates. Now:
+- `validateGrounding` runs on EVERY follow-up synthesis (both `answer_current_results` and `canvas_update` branches)
+- `buildEvidenceSpans` extracts claim-to-snippet provenance for EVERY follow-up
+- Violations (unsupported numeric claims, causal overreach, model-prior leakage) are logged with warnings
+
+**Files:** `routes/search.ts:233-240` (answer branch), `routes/search.ts:293-300` (canvas_update branch)
+
+#### P1 — Evidence-Fit Evaluation (New Core Stage)
+
+New deterministic module `evidenceFit.ts` evaluates whether each retrieved paper actually answers the user's question — separate from paper quality or topical relevance.
+
+**Per-paper dimensions:**
+- Intervention match (exact / close / broader_class / different)
+- Outcome match (exact / related / different) — uses planner's `hiddenGoals`
+- Population match (exact / overlapping / different) — uses planner's `inclusionCriteria` + disease bleed
+- Finding direction (supports_claim / mixed / null / contradicts / unrelated)
+- Head-to-head detection for comparison queries
+
+**Labels:** `direct` | `adjacent` | `weak` | `mismatch`
+
+**Downstream effects:**
+- `rankPapers` sorts fit-first (direct before adjacent before weak before mismatch), then bucket, then score
+- Synthesizer receives fit labels per paper in paper formatting: "DIRECTLY on the question" vs "ADJACENT — related but not a direct answer"
+- Retrieval judge quality score includes `evidenceFitBonus` component (10% weight)
+
+**Files:** `evidenceFit.ts` (new), `ranking.ts:159-216`, `synthesizer.ts:108-132`, `retrievalJudge.ts:237-270`
+
+#### P2 — Wire Dead Planner Fields
+
+Three planner fields that were produced by the LLM but never consumed are now wired:
+
+- **`isComparison` / `comparisonTarget`**: Planner detects comparison intent ("is X better than Y?"). Synthesis prompt receives explicit comparison instructions: distinguish head-to-head evidence from indirect, flag missing comparison evidence, separate mechanism from direct evidence.
+- **`desiredEvidenceTypes`**: Applies 0.85× penalty to evidence score for papers not matching the user's preferred evidence levels (e.g. user wants RCTs but gets cohort studies).
+- **`hiddenGoals`**: Rephrased in synthesis prompt as "the angles the user most cares about — frame the answer toward these when evidence supports it."
+
+**Files:** `researchPlanner.ts:37-58` (schema + prompt), `synthesizer.ts:163-175` (user message), `ranking.ts:51-95` (penalty)
+
+#### P3 — Follow-Up Deepening
+
+- **Claim deduplication**: Extracts claims from previous synthesis via `evidenceSpans.extractClaims`, passes them as "DO NOT REPEAT" constraints to follow-up synthesis
+- **`whatChanged` enforcement**: When new papers are retrieved, `whatChanged` field is required. If missing, weak (<40 chars), or contains evasion language ("no new", "same as", "unchanged"), a retry is triggered with a stronger prompt
+- **Fit labels in follow-up formatting**: Both existing and new paper blocks include fit labels, enabling the LLM to prioritize direct-fit papers
+
+**Files:** `synthesizer.ts:339-410`
+
+#### Type Changes
+
+- `ResearchPlan` now includes `isComparison`, `comparisonTarget`
+- `RankedPaper` now includes `evidenceFit?: EvidenceFit`
+- `RetrievalQualityScoreComponents` now includes `evidenceFitBonus`
+- Frontend types mirrored (`search-types.ts`)
+
+#### Caller Updates
+
+All callers of `rankPapers` updated from `rankPapers(papers, plan.entities)` to `rankPapers(papers, plan)`:
+- `index.ts:495`
+- `queryRepair.ts:169`
+- `verify-user-journeys.ts:69`
+- `run-search-evals.ts:82`
+
+#### Docs Updated
+
+- `ARCHITECTURE.md`: Pipeline diagram updated, evidence-fit section added, comparison awareness and follow-up grounding documented
+- `AGENTS.md`: Current State updated with P0-P3 entries, invariants section notes evidence-fit and follow-up grounding as non-negotiable
+- `IMPLEMENTATION_PLAN.md`: Full architecture package created (Parts 1-7)
+
 ## 2026-05-12
 
 ### Search — UX Restructure: Conversational Research Flow

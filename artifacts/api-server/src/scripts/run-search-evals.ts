@@ -79,7 +79,7 @@ async function runSingleEval(query: EvalQuery): Promise<EvalResult> {
 
     // 4. Rerank + topical veto + rank
     const reranked = await rerankByRelevance(plan.normalizedEnglishQuestion, deduplicated);
-    const vetoed = await applyTopicalVeto(plan, rankPapers(reranked, plan.entities));
+    const vetoed = await applyTopicalVeto(plan, rankPapers(reranked, plan));
     const ranked = vetoed;
 
     // 5. Initial quality judgment

@@ -1,5 +1,6 @@
-import type { RetrievedPaper, RankedPaper, StudyDesign, PopulationType, EvidenceBucket, EvidenceSnapshot } from "./types";
+import type { RetrievedPaper, RankedPaper, StudyDesign, PopulationType, EvidenceBucket, EvidenceSnapshot, ResearchPlan } from "./types";
 import { classifyStudyDesign, classifyPopulationType, looksConflicting } from "./evidenceClassifier";
+import { evaluateEvidenceFit } from "./evidenceFit";
 
 const DESIGN_SCORES: Record<StudyDesign, number> = {
   meta_analysis: 1.0,
@@ -56,7 +57,19 @@ interface ScoreInput {
   entities: string[];
   title: string;
   abstract: string;
+  desiredEvidenceTypes?: string[];
 }
+
+const DESIGN_TO_LABEL: Record<StudyDesign, string> = {
+  meta_analysis: "meta-analysis",
+  systematic_review: "systematic review",
+  rct: "randomized controlled trial",
+  cohort: "cohort",
+  cross_sectional: "cross-sectional",
+  case_report: "case report",
+  editorial: "editorial",
+  unknown: "unknown",
+};
 
 export function computeEvidenceScore(input: ScoreInput): number {
   const designScore = DESIGN_SCORES[input.studyDesign];
@@ -69,12 +82,26 @@ export function computeEvidenceScore(input: ScoreInput): number {
   const humanPop = POPULATION_SCORES[input.populationType];
   const outcomeFit = outcomeFitScore(input.title, input.abstract, input.entities);
 
-  const score =
+  let score =
     designScore * 0.35 +
     recency * 0.20 +
     citation * 0.10 +
     humanPop * 0.20 +
     outcomeFit * 0.15;
+
+  // P2: Soft penalty for papers not matching desired evidence types
+  if (input.desiredEvidenceTypes?.length) {
+    const designLabel = DESIGN_TO_LABEL[input.studyDesign];
+    const matchesDesired = input.desiredEvidenceTypes.some(
+      (type) =>
+        designLabel.includes(type.toLowerCase()) ||
+        input.studyDesign.includes(type.toLowerCase()) ||
+        type.toLowerCase().includes(designLabel),
+    );
+    if (!matchesDesired) {
+      score *= 0.85;
+    }
+  }
 
   return Math.min(1, Math.max(0, score));
 }
@@ -132,10 +159,14 @@ const BUCKET_ORDER: EvidenceBucket[] = [
 // relevanceScores: optional map of externalId → Cohere relevance score (0–1).
 // When present, used as a within-bucket tie-breaker alongside evidence score.
 // Evidence bucket hierarchy is never overridden by relevance.
+// P1: Evidence-fit sort priority: fit → bucket → within-bucket score.
+const FIT_ORDER: Record<string, number> = { direct: 0, adjacent: 1, weak: 2, mismatch: 3 };
+
 export function rankPapers(
   papers: Array<RetrievedPaper & { relevanceScore?: number }>,
-  entities: string[],
+  plan: ResearchPlan,
 ): RankedPaper[] {
+  const entities = plan.entities;
   const ranked: RankedPaper[] = papers.map((paper) => {
     const studyDesign = classifyStudyDesign(paper.abstract, paper.title, paper.studyType);
     const populationType = classifyPopulationType(paper.abstract, paper.title);
@@ -148,6 +179,7 @@ export function rankPapers(
       entities,
       title: paper.title,
       abstract: paper.abstract,
+      desiredEvidenceTypes: plan.desiredEvidenceTypes,
     });
 
     let evidenceBucket = assignEvidenceBucket(studyDesign, populationType, evidenceScore);
@@ -158,7 +190,7 @@ export function rankPapers(
 
     const plainSummary = deriveOneLiner(paper.title, paper.year, studyDesign);
 
-    return {
+    const preFitPaper: RankedPaper = {
       ...paper,
       studyDesign,
       populationType,
@@ -167,11 +199,22 @@ export function rankPapers(
       plainSummary,
       relevanceScore: paper.relevanceScore,
     };
+
+    // P1: Evidence-fit evaluation
+    const evidenceFit = evaluateEvidenceFit(preFitPaper, plan);
+
+    return {
+      ...preFitPaper,
+      evidenceFit,
+    };
   });
 
-  // Sort: bucket order first, then within bucket blend evidence (70%) + relevance (30%).
+  // P1 sort: evidence-fit first, then bucket order, then within-bucket blended score.
   // Relevance defaults to 0.5 when Cohere rerank was skipped — neutral, no distortion.
   ranked.sort((a, b) => {
+    const fitDiff = (FIT_ORDER[a.evidenceFit?.overall ?? "weak"] ?? 2) -
+                    (FIT_ORDER[b.evidenceFit?.overall ?? "weak"] ?? 2);
+    if (fitDiff !== 0) return fitDiff;
     const bucketDiff =
       BUCKET_ORDER.indexOf(a.evidenceBucket) - BUCKET_ORDER.indexOf(b.evidenceBucket);
     if (bucketDiff !== 0) return bucketDiff;

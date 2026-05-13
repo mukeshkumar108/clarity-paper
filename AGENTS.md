@@ -190,7 +190,7 @@ Specific things that signal bad output:
 
 ---
 
-## Current State (as of 2026-05-12)
+## Current State (as of 2026-05-13)
 
 **Document Analysis — Working:**
 - Two-pass pipeline end to end
@@ -219,14 +219,19 @@ Specific things that signal bad output:
 **Search — Working:**
 - Multi-source retrieval: Semantic Scholar + OpenAlex + EuropePMC + CORE in parallel
 - Research planner: intent classification, entity extraction, language detection, English retrieval normalization, direct/context query lanes
+- **Comparison awareness (2026-05-13):** Planner now detects comparison intent (`isComparison`/`comparisonTarget`); synthesis prompt distinguishes head-to-head evidence from indirect/single-intervention evidence
 - Evidence bucket ranking (meta-analysis → RCT → observational → mechanistic → background)
-- Retrieval judge + repair loop (auto-retrigger when quality is weak)
+- **Evidence-fit evaluation (2026-05-13):** Deterministic per-paper question-answer fit scoring (`evidenceFit.ts`); labels each paper `direct/adjacent/weak/mismatch`; sort order prioritizes fit over bucket; feeds synthesis prompt and judge quality score
+- Retrieval judge + repair loop (auto-retrigger when quality is weak; judge now includes evidence-fit bonus in quality score)
 - Staged retrieval: direct evidence lane first, broader context only when direct evidence is sparse
 - Evidence span engine: bigrams, entity weighting, negation detection, number matching
 - Support taxonomy: `strongly_supported / partially_supported / related_evidence`
 - Grounding safety: all snippets are verbatim abstract substrings (no LLM fabrication possible)
 - Grounding validator: causal overreach, numeric claim, model-prior leakage detection
+- **Follow-up grounding (2026-05-13):** Follow-up answers now run through the same `validateGrounding` + `buildEvidenceSpans` quality gates as initial search (previously bypassed entirely)
 - Synthesis constraints: causal language gating, generalization, abstraction, uncertainty
+- **Follow-up synthesis improvements (2026-05-13):** Previous-claim deduplication prevents repeated answers; `whatChanged` field is enforced (retry) when new papers are retrieved
+- **Dead planner fields now wired (2026-05-13):** `desiredEvidenceTypes` applies soft penalty in ranking; `hiddenGoals` frames synthesis toward user's actual interests; `inclusionCriteria` feeds population-match in evidence-fit
 - Coverage note: `abstracts_only` always returned and shown in UI
 - Unpaywall enrichment (open-access PDF links, parallel with synthesis)
 - EvidencePanel UI: expandable claim rows with verbatim snippets + DOI links
@@ -296,6 +301,9 @@ Specific things that signal bad output:
 - Search session context should remain structured and search-grounded. Do not refactor it into arbitrary message-history chat memory.
 - The `coverageNote` field on `SearchResult` — always set it; never omit or hardcode as covered
 - The retrieval judge + repair loop — do not remove even if it adds latency; quality is the tradeoff
+- **Evidence-fit evaluation is now a first-class stage** (`evidenceFit.ts`) that runs deterministically between ranking and judge. Do not remove it. Do not replace it with an LLM call without explicit instruction.
+- **Follow-up answers must run grounding validation** — the same `validateGrounding` + `buildEvidenceSpans` that initial search runs. Do not add a bypass path for follow-ups.
+- **Comparison awareness in the planner** — `isComparison` and `comparisonTarget` fields must be produced and consumed downstream. Do not remove these without explicit instruction.
 
 If you are asked to make a change that conflicts with any of 
 the above, flag it explicitly before proceeding. Do not 

@@ -166,7 +166,7 @@ export async function repairRetrieval(
   const dedupedRepaired = filterGuidelineDocuments(deduplicatePapers(rawRepaired));
   const vetoedRepaired = await applyTopicalVeto(
     plan,
-    rankPapers(dedupedRepaired, plan.entities),
+    rankPapers(dedupedRepaired, plan),
   );
   const repaired = filterTopicallyWeakPapers(
     vetoedRepaired,

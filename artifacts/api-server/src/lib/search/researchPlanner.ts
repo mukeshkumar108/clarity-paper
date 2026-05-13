@@ -55,6 +55,8 @@ const researchPlanSchema = z.object({
   exclusionCriteria: z.array(z.string()),
   desiredEvidenceTypes: z.array(z.string()),
   followUpQuestions: z.array(z.string()).min(2).max(4),
+  isComparison: z.boolean(),
+  comparisonTarget: z.string().nullable(),
 });
 
 const PLANNER_SYSTEM_PROMPT = `You are a scientific research planning assistant. Your job is to analyse a user's question or claim about health, supplements, or scientific topics, and produce a structured research plan that will guide evidence retrieval.
@@ -127,6 +129,14 @@ Example for "does creatine help the brain?":
 FOLLOW-UP QUESTIONS
 Generate 3-4 natural follow-up questions a curious person would want to explore after seeing initial results. Write them as if a friend is asking, not as database query headers.
 
+COMPARISON DETECTION
+Detect whether the user is comparing two interventions/exposures/approaches:
+- "is X better than Y?" → isComparison: true, comparisonTarget: "Y"
+- "X vs Y for Z" → isComparison: true, comparisonTarget: "Y"
+- "how does X compare to Y?" → isComparison: true, comparisonTarget: "Y"
+- "is intermittent fasting better than calorie restriction?" → isComparison: true, comparisonTarget: "calorie restriction"
+- Single-intervention questions → isComparison: false, comparisonTarget: null
+
 RULES
 - Never fabricate entities not present in the user's question
 - Never generate queries that are just synonyms of each other
@@ -195,6 +205,8 @@ function normalizeResearchPlan(plan: ResearchPlan): ResearchPlan {
     responseLanguage: plan.responseLanguage || plan.detectedLanguage || "English",
     normalizedEnglishQuestion:
       plan.normalizedEnglishQuestion || plan.userQuestion,
+    isComparison: plan.isComparison ?? false,
+    comparisonTarget: plan.comparisonTarget ?? null,
     directQueryVariants: finalDirect,
     contextQueryVariants: finalContext,
     queryVariants: [...finalDirect, ...finalContext],

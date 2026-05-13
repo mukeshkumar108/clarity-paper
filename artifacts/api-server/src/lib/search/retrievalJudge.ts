@@ -200,6 +200,7 @@ export function computeRetrievalQualityScore(
       interventionMatch: 0,
       populationMatch: 0,
       evidenceTypeBonus: 0,
+      evidenceFitBonus: 0,
       offTopicPenalty: 0,
       guidelinePollutionPenalty: 0,
       entityConflationPenalty: 0,
@@ -247,6 +248,15 @@ export function computeRetrievalQualityScore(
         )
       : 0.5;
 
+  // P1: evidenceFitBonus — papers with direct/adjacent fit score higher
+  const evidenceFitBonus = Math.min(
+    top5.filter((p) => {
+      const fit = p.evidenceFit?.overall;
+      return fit === "direct" || fit === "adjacent";
+    }).length / 3,
+    1,
+  );
+
   // Penalties (applied to top-5)
   const offTopicInTop5 = top5.filter(
     (p) => titleEntityMatch(p.title, plan.entities) < 0.15 && abstractEntityMatch(p.abstract, plan.entities) < 0.15,
@@ -265,10 +275,11 @@ export function computeRetrievalQualityScore(
   const diseaseBleedPenalty = -Math.min(diseaseBleedInTop5.length * 0.07, 0.21);
 
   const base =
-    top5TopicalAlignment * 0.35 +
-    interventionMatch * 0.20 +
-    populationMatch * 0.15 +
-    evidenceTypeBonus * 0.10;
+    top5TopicalAlignment * 0.30 +
+    interventionMatch * 0.18 +
+    populationMatch * 0.12 +
+    evidenceTypeBonus * 0.10 +
+    evidenceFitBonus * 0.10;
 
   const total = Math.max(
     0,
@@ -283,6 +294,7 @@ export function computeRetrievalQualityScore(
     interventionMatch,
     populationMatch,
     evidenceTypeBonus,
+    evidenceFitBonus,
     offTopicPenalty,
     guidelinePollutionPenalty,
     entityConflationPenalty,
@@ -532,7 +544,7 @@ export function judgeRetrievalQuality(
   if (papers.length === 0) {
     const emptyScore: RetrievalQualityScoreComponents = {
       top5TopicalAlignment: 0, interventionMatch: 0, populationMatch: 0,
-      evidenceTypeBonus: 0, offTopicPenalty: 0, guidelinePollutionPenalty: 0,
+      evidenceTypeBonus: 0, evidenceFitBonus: 0, offTopicPenalty: 0, guidelinePollutionPenalty: 0,
       entityConflationPenalty: 0, diseaseBleedPenalty: 0, total: 0,
     };
     return {
