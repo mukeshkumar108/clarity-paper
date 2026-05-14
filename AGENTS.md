@@ -4,6 +4,9 @@ This file is the entry point for all coding agents and future
 maintainers. Read this first, then read the three source-of-truth 
 files listed below before touching anything.
 
+**New agent onboarding:** Read `ONBOARDING.md` for a 5-minute overview
+of the search pipeline, chat interface, database schema, and current issues.
+
 ## Source of Truth Files
 
 Read these in order before making any changes:
