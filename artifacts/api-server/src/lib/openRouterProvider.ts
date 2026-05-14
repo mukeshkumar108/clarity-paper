@@ -18,6 +18,8 @@ export async function callLLM(
     pdfBase64?: string;
     /** Abort the request after this many milliseconds. Defaults to 45 000. */
     timeoutMs?: number;
+    /** Max tokens to generate. If unset, the provider default is used. */
+    maxTokens?: number;
   }
 ): Promise<string> {
   if (isDemoMode) {
@@ -47,6 +49,7 @@ export async function callLLM(
       { role: "user", content: userContent },
     ],
     temperature: options?.temperature ?? 0.2,
+    ...(options?.maxTokens != null ? { max_tokens: options.maxTokens } : {}),
   };
 
   if (responseSchema) {

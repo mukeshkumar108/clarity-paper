@@ -24,6 +24,8 @@ export interface ResearchPlan {
   isComparison: boolean;
   /** P2: The comparison target, e.g. "continuous calorie restriction" */
   comparisonTarget: string | null;
+  /** P3: Whether the user is asking for practical guidance rather than an evidence summary */
+  isPracticalQuery: boolean;
 }
 
 export type StudyDesign =

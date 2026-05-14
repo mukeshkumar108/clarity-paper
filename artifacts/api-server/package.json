@@ -14,6 +14,7 @@
     "seed:demos:local": "node --env-file=../../.env --import tsx ./src/scripts/seed-demos.ts",
     "eval:search": "node --env-file=../../.env --import tsx ./src/scripts/run-search-evals.ts",
     "eval:search:query": "node --env-file=../../.env --import tsx ./src/scripts/run-search-evals.ts --queries",
+    "voice:score": "node --env-file=../../.env --import tsx ./src/scripts/voice-score.ts",
     "verify:journeys": "node --env-file=../../.env --import tsx ./src/scripts/verify-user-journeys.ts"
   },
   "dependencies": {

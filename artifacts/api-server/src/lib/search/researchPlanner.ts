@@ -57,6 +57,7 @@ const researchPlanSchema = z.object({
   followUpQuestions: z.array(z.string()).min(2).max(4),
   isComparison: z.boolean(),
   comparisonTarget: z.string().nullable(),
+  isPracticalQuery: z.boolean(),
 });
 
 const PLANNER_SYSTEM_PROMPT = `You are a scientific research planning assistant. Your job is to analyse a user's question or claim about health, supplements, or scientific topics, and produce a structured research plan that will guide evidence retrieval.
@@ -137,6 +138,19 @@ Detect whether the user is comparing two interventions/exposures/approaches:
 - "is intermittent fasting better than calorie restriction?" → isComparison: true, comparisonTarget: "calorie restriction"
 - Single-intervention questions → isComparison: false, comparisonTarget: null
 
+PRACTICAL QUERY DETECTION
+Detect whether the user is asking for practical guidance — what to do or think — rather than an evidence summary:
+- isPracticalQuery: true when the user uses any of these patterns:
+  - "should I" / "should someone" / "should a person"
+  - "is it worth" / "worth taking" / "worth doing"
+  - "realistically" / "in practice" / "in real life"
+  - "what would you do" / "what would you recommend"
+  - "for someone like me" / "for a healthy adult" / "for my situation"
+  - "is X overhyped" / "is it hype"
+  - Goal-driven framing: "I want to improve X", "I'm trying to Y"
+  - Personal context framing: "I'm a 35-year-old", "I exercise 3x/week"
+- isPracticalQuery: false for pure evidence questions ("what does science say about X?", "is there evidence that X?", "studies on X")
+
 RULES
 - Never fabricate entities not present in the user's question
 - Never generate queries that are just synonyms of each other
@@ -207,6 +221,7 @@ function normalizeResearchPlan(plan: ResearchPlan): ResearchPlan {
       plan.normalizedEnglishQuestion || plan.userQuestion,
     isComparison: plan.isComparison ?? false,
     comparisonTarget: plan.comparisonTarget ?? null,
+    isPracticalQuery: plan.isPracticalQuery ?? false,
     directQueryVariants: finalDirect,
     contextQueryVariants: finalContext,
     queryVariants: [...finalDirect, ...finalContext],

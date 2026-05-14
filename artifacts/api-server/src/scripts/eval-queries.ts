@@ -193,4 +193,33 @@ export const EVAL_QUERIES: EvalQuery[] = [
     category: "claim_check",
     notes: "Origin is marketing claim. Steps research has clear dose-response data.",
   },
+
+  // ── Practical-mode / mode-shift queries (test Fix 5) ──────────────────────
+  // These queries shift from "what does the evidence say?" to
+  // "realistically, what should I do/think?" — the system must detect this
+  // and respond with guidance, not another evidence summary.
+  {
+    id: "prac-01",
+    query: "should I actually take creatine for my workouts or is it overhyped?",
+    category: "practical_mode",
+    notes: "Explicit should-I framing. Must shift from evidence report to practical guidance.",
+  },
+  {
+    id: "prac-02",
+    query: "realistically, what should I do about my sleep? I'm getting 6 hours and I'm tired",
+    category: "practical_mode",
+    notes: "Personal context + realistically = practical mode. Should give actionable guidance.",
+  },
+  {
+    id: "prac-03",
+    query: "is it worth taking omega-3 every day? I'm a healthy 35 year old",
+    category: "practical_mode",
+    notes: "Worth-taking framing + personal context. Should answer for THIS person.",
+  },
+  {
+    id: "prac-04",
+    query: "I want to improve my focus at work — what does science actually say I should try first?",
+    category: "practical_mode",
+    notes: "Direct ask for prioritized guidance. Should rank options by evidence strength.",
+  },
 ];

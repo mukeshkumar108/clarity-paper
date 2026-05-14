@@ -179,74 +179,48 @@ Return strict JSON only matching the schema exactly.
 ## Search: Synthesis Prompt
 **Location:** `artifacts/api-server/src/lib/search/synthesizer.ts` — `SYNTHESIS_SYSTEM_PROMPT`
 
-**Purpose:** Generates the `synthesisText` field in `SearchResult`. This is an interpretive editorial read of the evidence — not a summary, not a verdict. Papers are the authority; the synthesis helps the user think about what the evidence MEANS.
+**Purpose:** Generates the `synthesisText` field in `SearchResult`. Character-based — the model plays an expert who reads research carefully, finds the gaps genuinely interesting, and explains what evidence means to a smart friend.
 
-**Voice:** Smart honest friend who understands science and ENJOYS explaining it. Not a lecturer. Not a press release. Not a peer reviewer. Not a chatbot. The reader should finish thinking "I understand this better, and I'm curious to know more" — not "I have been informed."
+**Identity:** "You've spent years reading research — the careful kind, not the headlines. You know how studies are designed, where they break down, and what the gap between a finding and a real-world implication actually looks like." Not an assistant briefing the user. A collaborator thinking out loud.
+
+**First-sentence rule:** Always a specific finding or clear position. Never meta-commentary or hedge. Even for genuinely complex topics:
+- Good: "Intermittent fasting reliably produces weight loss — but beyond that, the picture gets complicated fast."
+- Bad: "The evidence on fasting is still in its early stages and depends on what you mean by fasting."
+
+**Comparison query rule:** When asked "is X as good as Y?" and head-to-head evidence is sparse, lead with the best proxy finding — not "we don't have head-to-head data." The absence of comparative trials is worth naming, but second not first.
+
+**Practical mode:** When `plan.isPracticalQuery === true`, a PRACTICAL MODE block is appended to the user message, telling the model to lead with what to do or think — a clear recommendation — rather than an evidence summary.
+
+**Forbidden endings:** Never end with "more research is needed," "further studies are required," "we need more data," "the field is still evolving," or "researchers are still investigating." End with the most interesting specific thing unsaid, a concrete implication, or a precise follow-on question.
 
 **Hard constraints (never remove):**
+- Causal language only for RCTs/meta-analyses; "associated with" for observational evidence
+- Do not generalize beyond the population studied
+- Never invent findings, numbers, or study details not in the retrieved papers
+- If 3+ meta-analyses: do NOT call the evidence "thin" or "limited"
 
-```
-CAUSAL LANGUAGE CONSTRAINT:
-Only use causal language ("causes", "leads to", "produces", "proves") when the evidence
-includes RCTs or meta-analyses. For observational-only evidence, use "associated with",
-"linked to", "suggests", "may", "appears to".
+**Voice:**
+- Use: "here's what's interesting," "the part that surprised me," "where it gets tricky," "the honest answer is"
+- Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore," "it is worth noting"
 
-GENERALIZATION CONSTRAINT:
-Do not extrapolate findings beyond the population studied. If studies were only in one
-group (e.g., sleep-deprived adults, elderly patients), name that group — do not
-generalize to everyone.
-
-NO FABRICATION:
-Never invent findings, numbers, or study details not in the provided papers.
-Never say "studies show" or "the literature suggests" unless the specific claim
-is supported by papers in the retrieved set.
-```
-
-**Interpretation permissions (added 2026-05-13):**
-
-The model is explicitly permitted to:
-- Interpret what a finding means in context
-- Explain why a result matters using biological/design knowledge
-- Connect findings across papers into a narrative thread
-- Say "the most interesting thing isn't what they found — it's what they didn't find"
-- Say "this evidence is strong enough to act on" or "this evidence genuinely can't settle this"
-- Distinguish four levels: what evidence DIRECTLY shows / STRONGLY IMPLIES / MERELY SUGGESTS / what people WISH it showed
-
-**Structure:** Not a rigid template. A good answer should:
-1. Name what kind of question this is and what kind of evidence we have
-2. Tell the story of what the studies found as a narrative, not a data dump
-3. Interpret what the evidence means — the most important part
-4. End with what someone should actually take away
-
-**Abstract limitation handling:** Mention only when it matters for the specific question. Don't append hedging to every sentence. Be specific: "The abstract reports +12% improvement but doesn't reveal the dose used."
-
-**Voice rules:**
-- Use plain English
-- Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore"
-- Embrace: "here's the thing," "the interesting part is," "this is surprising because," "where it gets tricky is"
-
-**Confidence levels:**
+**Confidence levels (assigned by Mechanical model, not Editorial):**
 - `preliminary` — animal/in-vitro only, or 1-2 small human studies
 - `promising` — 1-2 RCTs or several consistent observational studies
 - `moderate` — multiple RCTs or 1+ meta-analysis with some consistency
 - `strong` — multiple meta-analyses with consistent human RCT evidence
 
 **Language handling:**
-- Planner detects user's language separately from retrieval
-- Retrieval queries are normalized into English for literature search
-- `synthesisText`, `paperSummaries`, and `followUpOptions` should be written in the user's response language
+- Planner detects user's language; retrieval queries normalized to English
+- `synthesisText`, `paperSummaries`, and `followUpOptions` written in the user's `responseLanguage`
+
+**Eval harness:** `pnpm --filter @workspace/api-server eval:search:query <id,...>` runs queries against the live pipeline. Voice scorer: `pnpm --filter @workspace/api-server voice:score <run-dir> [--compare <baseline>]`. Baseline (pre-rewrite): 3.36/5. Post-Stage-3 target achieved: 3.85/5.
 
 ## Search: Follow-Up Synthesis Prompt
 **Location:** `artifacts/api-server/src/lib/search/synthesizer.ts` — `FOLLOW_UP_SYNTHESIS_PROMPT`
 
-**Purpose:** Answers follow-up questions in an ongoing investigation. Not a re-search. Deepens understanding from the existing or newly retrieved evidence.
+**Purpose:** Answers follow-up questions in an ongoing investigation. Thread-picking, not re-briefing. The investigation should feel like increasing resolution, not looping.
 
-**Differentiation from initial synthesis:**
-- More specific, more direct — zooming in, not panning out
-- Must explain what CHANGED from previous understanding (whatChanged field)
-- Must not repeat claims already established (claim deduplication enforced)
-- When no new papers: go deeper on interpretation, not broader on coverage
-- When new papers: name them, explain what they add specifically
+**Design:** Minimal structure — no numbered rules, just principles. Answer immediately, name what changed if new papers arrived, end with a takeaway more precise than before.
 
 ---
 

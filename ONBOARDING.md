@@ -47,6 +47,9 @@ User types "is intermittent fasting better than calorie restriction?"
 │    - intentType: claim_check / comparison / etc│
 │    - entities: ["intermittent fasting", ...]   │
 │    - isComparison: true, comparisonTarget: ... │
+│    - isPracticalQuery: true/false (detected    │
+│      from "should I", "is it worth", "I want   │
+│      to improve", personal context framing)    │
 │    - directQueryVariants + contextQueryVariants│
 │    - hiddenGoals, desiredEvidenceTypes         │
 └──────────────────────────────────────────────┘
@@ -230,19 +233,22 @@ paper_cache:
 
 ## Current Issues to Investigate
 
-1. **Synthesis voice still hedgy/flat** despite 3 prompt rewrites and model swap to Flash full. The model might still be producing safe consensus-language. Check: is the deployed model actually Flash full? Is the env var set correctly on Railway?
+1. **Follow-up answers sometimes replace the page** — the session's `synthesisText` is preserved (not overwritten) but `result.synthesisText` might still be stale in the frontend. Check: does `ChatCanvas` correctly read from `messages[0].content` for the initial synthesis and `message.content` for follow-ups?
 
-2. **Follow-up answers sometimes replace the page** — the session's `synthesisText` is preserved (not overwritten) but `result.synthesisText` might still be stale in the frontend. Check: does `ChatCanvas` correctly read from `messages[0].content` for the initial synthesis and `message.content` for follow-ups?
+2. **"Based on abstracts" disclosure** — softened to `"Abstracts only · full texts not reviewed"` in 50% opacity. Check: is the UI showing the old or new version?
 
-3. **"Based on abstracts" disclosure** — softened to `"Abstracts only · full texts not reviewed"` in 50% opacity. Check: is the UI showing the old or new version?
+3. **Evidence not remaining grounded across turns** — follow-up evidence spans are computed (in `routes/search.ts`) and stored in message metadata, but the frontend sidebar only shows initial synthesis evidence spans. Check: does `EvidencePanel` in the sidebar accept per-message evidence spans?
 
-4. **Evidence not remaining grounded across turns** — follow-up evidence spans are computed (in `routes/search.ts`) and stored in message metadata, but the frontend sidebar only shows initial synthesis evidence spans. Check: does `EvidencePanel` in the sidebar accept per-message evidence spans?
+4. **Follow-up questions duplicate** — `deduplicateFollowUpOptions()` normalizes case/whitespace. Check: does the LLM produce near-duplicates with different wording that passes the dedup?
 
-5. **Follow-up questions duplicate** — `deduplicateFollowUpOptions()` normalizes case/whitespace. Check: does the LLM produce near-duplicates with different wording that passes the dedup?
+5. **prac-04 type queries ("improve my focus at work")** — broad goal-framing queries often return preliminary evidence. The synthesis correctly reports weak evidence, but verdictDirectness suffers. Retrieval repair helps marginally. This is a retrieval problem, not a synthesis problem.
 
-6. **The "thin evidence" claim when 5 meta-analyses exist** — the prompt has: "If 3+ meta-analyses, do NOT call the evidence thin." Check: is this instruction being followed?
-
-7. **Gemini's review said the answer hedges too much** — "comparable results" false equivalence, "surprisingly thin" when evidence is strong, "abstracts only" as cop-out. Each of these has a prompt fix already deployed. Check: is the deployed prompt the latest version?
+**Fixed (2026-05-14):**
+- Synthesis voice hedgy/flat — addressed by character-based identity rewrite, ANSWER THEN EXPLAIN directive, behavioral exemplar, forbidden phrase list
+- "More research needed" endings — FORBIDDEN ENDINGS section now explicitly bans these patterns
+- Comparison queries opening with hedge — COMPARISON QUERY RULE added (lead with best proxy finding, not "we don't have head-to-head data")
+- Practical mode not detected — planner now emits `isPracticalQuery`; synthesis adds PRACTICAL MODE framing block when true
+- "Thin evidence" when 3+ meta-analyses exist — now explicitly forbidden in calibration rules
 
 ---
 
@@ -262,7 +268,11 @@ See `CHANGELOG.md` for full details. Quick summary:
 
 - Evidence-fit scoring (direct/adjacent/weak/mismatch per paper)
 - Comparison awareness (planner detects comparisons, synthesis handles them)
-- Synthesis voice overhaul (3 iterations — interpretation over summarization)
+- Synthesis voice overhaul: character-based identity, ANSWER THEN EXPLAIN, comparison query rule, forbidden endings, behavioral exemplar — voice score 3.36→3.85/5 on 8-query eval
+- Practical mode: planner emits `isPracticalQuery`; synthesizer adds recommendation-first framing for practical questions
+- Follow-up synthesis prompt simplified (minimal structure, conversational thread-picking)
+- Voice scorer script (`src/scripts/voice-score.ts`) + 4 practical-mode eval queries added to harness
+- `maxTokens: 4096` on editorial synthesis call to prevent JSON truncation on long answers
 - Follow-up deepening (claim dedup, whatChanged enforcement, paper merging)
 - Canvas→Chat architecture (session no longer owns synthesis; messages do)
 - Paper sidebar: persistent, turn-grouped, NEW badges, recommended papers
