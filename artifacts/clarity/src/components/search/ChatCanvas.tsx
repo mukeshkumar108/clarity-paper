@@ -207,21 +207,6 @@ function AssistantMessage({
   );
 }
 
-function SimpleAssistantMessage({ content }: { content: string }) {
-  return (
-    <div className="flex gap-3">
-      <div className="shrink-0 w-8 h-8 rounded-full bg-canvas-parchment border border-pebble-gray flex items-center justify-center">
-        <Bot className="w-4 h-4 text-onyx-outline" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="bg-white/60 border border-pebble-gray/70 rounded-2xl rounded-tl-sm px-4 py-3">
-          <p className="text-[14px] text-deep-shadow leading-relaxed">{content}</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Paper sidebar ──────────────────────────────────────────────────────────────
 
 function PapersSidebar({
@@ -358,11 +343,37 @@ export function ChatCanvas({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, result.synthesisText]);
 
+  // Build a uniform message list: initial synthesis + subsequent turns
+  const allMessages: Array<{ role: "user" | "assistant"; content: string; kind?: string; isFirst?: boolean }> = [];
+
+  // Add initial synthesis as message[0] if we have it
+  const initialSynthesisMsg = messages.find(m => m.kind === "synthesis");
+  if (!synthesisLoading) {
+    allMessages.push({
+      role: "assistant",
+      content: initialSynthesisMsg?.content ?? result.synthesisText,
+      kind: "synthesis",
+      isFirst: true,
+    });
+  }
+
+  // Add subsequent messages (skip the synthesis message we already handled)
+  for (const message of messages) {
+    if (message.role === "user") {
+      allMessages.push({ role: "user", content: message.content });
+    } else if (message.kind !== "synthesis") {
+      allMessages.push({
+        role: "assistant",
+        content: message.content,
+        kind: message.kind,
+      });
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-8 max-w-5xl mx-auto">
       {/* Left column: chat */}
       <div className="min-w-0 space-y-6">
-        {/* First assistant message — the main synthesis */}
         {synthesisLoading ? (
           <div className="flex gap-3">
             <div className="shrink-0 w-8 h-8 rounded-full bg-canvas-parchment border border-pebble-gray flex items-center justify-center">
@@ -378,36 +389,21 @@ export function ChatCanvas({
             </div>
           </div>
         ) : (
-          <AssistantMessage
-            result={result}
-            onFollowUp={onFollowUp}
-            isFirst={true}
-          />
-        )}
-
-        {/* Subsequent conversation turns */}
-        {messages.length > 0 && (
-          <div className="space-y-6 pt-4 border-t border-pebble-gray/20">
-            {messages.map((message) => {
+          <div className="space-y-6">
+            {allMessages.map((message, idx) => {
               if (message.role === "user") {
-                return <UserMessage key={message.id} content={message.content} />;
+                return <UserMessage key={`user-${idx}`} content={message.content} />;
               }
 
-            if (message.kind === "canvas_update") {
-              // For canvas updates, show the follow-up answer from the message content
+              const isFirst = message.isFirst === true;
               return (
-                <AssistantMessage 
-                  key={message.id}
+                <AssistantMessage
+                  key={`asst-${idx}`}
                   result={result}
                   onFollowUp={onFollowUp}
-                  isFirst={false}
-                  overrideText={message.content}
+                  isFirst={isFirst}
+                  overrideText={isFirst ? undefined : message.content}
                 />
-              );
-            }
-
-              return (
-                <SimpleAssistantMessage key={message.id} content={message.content} />
               );
             })}
           </div>

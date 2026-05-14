@@ -447,6 +447,26 @@ export async function runSearch(
         .returning();
       sessionId = session.id;
       pruneOldSessions(userId).catch((err) => logger.warn({ err }, "Session pruning failed"));
+
+      // Persist the initial synthesis as a message (canvas→chat: truth lives in messages)
+      try {
+        const spanDiag = computeSpanDiagnostics(cached.evidenceSpans);
+        await db.insert(searchSessionMessagesTable).values({
+          sessionId: session.id,
+          role: "assistant",
+          kind: "synthesis",
+          content: cached.synthesisText,
+          metadata: {
+            confidence: cached.confidence,
+            evidenceSnapshot: cached.evidenceSnapshot,
+            evidenceSpanCount: cached.evidenceSpans.length,
+            groundingDiagnostics: spanDiag,
+            noEvidence: cached.noEvidence,
+          },
+        });
+      } catch (msgErr) {
+        logger.warn({ err: msgErr }, "Failed to persist cached synthesis message — non-fatal");
+      }
     } catch (err) {
       logger.warn({ err }, "Failed to persist cached search session");
     }
@@ -695,6 +715,25 @@ export async function runSearch(
       .returning();
     sessionId = session.id;
     logger.info({ sessionId: session.id }, "Search session saved");
+
+    // Persist the initial synthesis as a message (canvas→chat: truth lives in messages)
+    try {
+      await db.insert(searchSessionMessagesTable).values({
+        sessionId: session.id,
+        role: "assistant",
+        kind: "synthesis",
+        content: synthesis.synthesisText,
+        metadata: {
+          confidence: synthesis.confidence,
+          evidenceSnapshot: snapshot,
+          evidenceSpanCount: evidenceSpans.length,
+          groundingDiagnostics,
+          noEvidence: synthesis.noEvidence,
+        },
+      });
+    } catch (msgErr) {
+      logger.warn({ err: msgErr }, "Failed to persist initial synthesis message — non-fatal");
+    }
 
     // 11. Prune to 50 most recent sessions for this user (fire-and-forget)
     pruneOldSessions(userId).catch((err) =>

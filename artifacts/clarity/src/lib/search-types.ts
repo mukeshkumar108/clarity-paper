@@ -51,6 +51,9 @@ export interface ResearchPlan {
   queryVariants: string[];
   directQueryVariants: string[];
   contextQueryVariants: string[];
+  inclusionCriteria: string[];
+  exclusionCriteria: string[];
+  desiredEvidenceTypes: string[];
   followUpQuestions: string[];
   isComparison?: boolean;
   comparisonTarget?: string | null;
@@ -129,7 +132,7 @@ export interface SearchSessionMessage {
   id: number;
   sessionId: number;
   role: "user" | "assistant";
-  kind: "refinement" | "system" | "answer" | "clarification" | "canvas_update";
+  kind: "refinement" | "system" | "answer" | "clarification" | "canvas_update" | "synthesis";
   content: string;
   metadata?: {
     canvasChanged?: boolean;

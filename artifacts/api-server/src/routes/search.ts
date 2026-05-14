@@ -205,6 +205,8 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
     let papersBefore = session.papers.length;
     let papersAfter = papersBefore;
     let newPapers: RankedPaper[] = [];
+    let followUpEvidenceSpans: EvidenceSpan[] | null = null;
+    let followUpSpanDiagnostics: GroundingDiagnostics | null = null;
     
     // Step 3: Handle based on action type
     if (action.actionType === "clarification_prompt") {
@@ -237,9 +239,9 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
       if (grounding.unsupportedNumericClaims > 0 || grounding.causalOverreach || grounding.studiesShowViolations > 0 || grounding.modelPriorLeakage > 0) {
         logger.warn({ unsupported: grounding.unsupportedNumericClaims, causalOverreach: grounding.causalOverreach, studiesShowViolations: grounding.studiesShowViolations, modelPriorLeakage: grounding.modelPriorLeakage }, "Grounding issues in follow-up (answer_current_results)");
       }
-      const followUpEvidenceSpans = buildEvidenceSpans(synthesis.synthesisText, session.papers, session.plan.entities);
-      const spanDiag = computeSpanDiagnostics(followUpEvidenceSpans);
-      logger.debug({ totalClaims: spanDiag.totalClaims, claimsWithAnySupport: spanDiag.claimsWithAnySupport }, "Follow-up evidence span diagnostics (answer_current_results)");
+      followUpEvidenceSpans = buildEvidenceSpans(synthesis.synthesisText, session.papers, session.plan.entities);
+      followUpSpanDiagnostics = computeSpanDiagnostics(followUpEvidenceSpans);
+      logger.debug({ totalClaims: followUpSpanDiagnostics.totalClaims, claimsWithAnySupport: followUpSpanDiagnostics.claimsWithAnySupport }, "Follow-up evidence span diagnostics (answer_current_results)");
       
       assistantContent = synthesis.synthesisText;
       
@@ -324,9 +326,9 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
       if (grounding.unsupportedNumericClaims > 0 || grounding.causalOverreach || grounding.studiesShowViolations > 0 || grounding.modelPriorLeakage > 0) {
         logger.warn({ unsupported: grounding.unsupportedNumericClaims, causalOverreach: grounding.causalOverreach, studiesShowViolations: grounding.studiesShowViolations, modelPriorLeakage: grounding.modelPriorLeakage }, "Grounding issues in follow-up (canvas_update)");
       }
-      const followUpEvidenceSpans = buildEvidenceSpans(synthesis.synthesisText, papersForSynthesis, session.plan.entities);
-      const spanDiag = computeSpanDiagnostics(followUpEvidenceSpans);
-      logger.debug({ totalClaims: spanDiag.totalClaims, claimsWithAnySupport: spanDiag.claimsWithAnySupport }, "Follow-up evidence span diagnostics (canvas_update)");
+      followUpEvidenceSpans = buildEvidenceSpans(synthesis.synthesisText, papersForSynthesis, session.plan.entities);
+      followUpSpanDiagnostics = computeSpanDiagnostics(followUpEvidenceSpans);
+      logger.debug({ totalClaims: followUpSpanDiagnostics.totalClaims, claimsWithAnySupport: followUpSpanDiagnostics.claimsWithAnySupport }, "Follow-up evidence span diagnostics (canvas_update)");
 
       // Persist merged session — keep original query/plan/synthesis; follow-up answer lives in message
       await overwriteSearchSession(id, {
@@ -367,6 +369,9 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
             newPaperIds: newPapers.map(p => p.externalId),
             newPaperTitles: newPapers.map(p => p.title.slice(0, 100)),
           } : undefined,
+          // Include evidence spans for follow-up grounding
+          evidenceSpans: followUpEvidenceSpans ?? undefined,
+          spanDiagnostics: followUpSpanDiagnostics ?? undefined,
         },
       })
       .returning();

@@ -31,7 +31,12 @@ const STUB_PLAN: SearchResult["plan"] = {
   queryVariants: [],
   directQueryVariants: [],
   contextQueryVariants: [],
+  inclusionCriteria: [],
+  exclusionCriteria: [],
+  desiredEvidenceTypes: [],
   followUpQuestions: [],
+  isComparison: false,
+  comparisonTarget: null,
 };
 
 const EMPTY_SNAPSHOT: EvidenceSnapshot = {
