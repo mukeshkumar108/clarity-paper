@@ -152,6 +152,9 @@ export interface SearchSessionMessage {
       newPaperIds: string[];
       newPaperTitles: string[];
     };
+    evidenceSpans?: any[];
+    spanDiagnostics?: any;
+    followUpOptions?: string[];
   };
   createdAt: string;
 }

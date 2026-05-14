@@ -207,6 +207,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
     let newPapers: RankedPaper[] = [];
     let followUpEvidenceSpans: EvidenceSpan[] | null = null;
     let followUpSpanDiagnostics: GroundingDiagnostics | null = null;
+    let followUpOptions: string[] = [];
     
     // Step 3: Handle based on action type
     if (action.actionType === "clarification_prompt") {
@@ -241,9 +242,10 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
       }
       followUpEvidenceSpans = buildEvidenceSpans(synthesis.synthesisText, session.papers, session.plan.entities);
       followUpSpanDiagnostics = computeSpanDiagnostics(followUpEvidenceSpans);
-      logger.debug({ totalClaims: followUpSpanDiagnostics.totalClaims, claimsWithAnySupport: followUpSpanDiagnostics.claimsWithAnySupport }, "Follow-up evidence span diagnostics (answer_current_results)");
+      logger.debug({ totalClaims: followUpSpanDiagnostics?.totalClaims, claimsWithAnySupport: followUpSpanDiagnostics?.claimsWithAnySupport }, "Follow-up evidence span diagnostics (answer_current_results)");
       
       assistantContent = synthesis.synthesisText;
+      followUpOptions = synthesis.followUpOptions;
       
     } else {
       // refine_current_canvas or focused_retrieval_expansion - MAY need new evidence
@@ -345,6 +347,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
       } as any);
       
       assistantContent = synthesis.synthesisText;
+      followUpOptions = synthesis.followUpOptions;
     }
 
     // Step 4: Save assistant message with synthesized content
@@ -372,6 +375,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
           // Include evidence spans for follow-up grounding
           evidenceSpans: followUpEvidenceSpans ?? undefined,
           spanDiagnostics: followUpSpanDiagnostics ?? undefined,
+          followUpOptions: followUpOptions.length > 0 ? followUpOptions : undefined,
         },
       })
       .returning();

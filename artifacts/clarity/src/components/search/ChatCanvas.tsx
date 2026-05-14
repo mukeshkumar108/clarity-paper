@@ -135,15 +135,18 @@ function AssistantMessage({
   onFollowUp,
   isFirst = false,
   overrideText,
+  followUpOptions,
 }: {
   result: SearchResult;
   onFollowUp: (query: string) => void;
   isFirst?: boolean;
   overrideText?: string;
+  followUpOptions?: string[];
 }) {
   const [showEvidence, setShowEvidence] = useState(false);
   const recs = getRecommendedPapers(isFirst ? result.papers : []);
   const text = overrideText ?? result.synthesisText;
+  const options = followUpOptions ?? (isFirst ? result.followUpOptions : []);
 
   return (
     <div className="flex gap-3">
@@ -198,9 +201,9 @@ function AssistantMessage({
           )}
         </div>
 
-        {/* Follow-up suggestions */}
-        {isFirst && result.followUpOptions.length > 0 && (
-          <FollowUpOptions options={result.followUpOptions} onSelect={onFollowUp} />
+        {/* Follow-up suggestions — shown on every turn that has options */}
+        {options.length > 0 && (
+          <FollowUpOptions options={options} onSelect={onFollowUp} />
         )}
       </div>
     </div>
@@ -344,7 +347,13 @@ export function ChatCanvas({
   }, [messages, result.synthesisText]);
 
   // Build a uniform message list: initial synthesis + subsequent turns
-  const allMessages: Array<{ role: "user" | "assistant"; content: string; kind?: string; isFirst?: boolean }> = [];
+  const allMessages: Array<{
+    role: "user" | "assistant";
+    content: string;
+    kind?: string;
+    isFirst?: boolean;
+    followUpOptions?: string[];
+  }> = [];
 
   // Add initial synthesis as message[0] if we have it
   const initialSynthesisMsg = messages.find(m => m.kind === "synthesis");
@@ -354,6 +363,7 @@ export function ChatCanvas({
       content: initialSynthesisMsg?.content ?? result.synthesisText,
       kind: "synthesis",
       isFirst: true,
+      followUpOptions: result.followUpOptions,
     });
   }
 
@@ -362,10 +372,12 @@ export function ChatCanvas({
     if (message.role === "user") {
       allMessages.push({ role: "user", content: message.content });
     } else if (message.kind !== "synthesis") {
+      const msgMeta = message.metadata as any;
       allMessages.push({
         role: "assistant",
         content: message.content,
         kind: message.kind,
+        followUpOptions: msgMeta?.followUpOptions,
       });
     }
   }
@@ -403,6 +415,7 @@ export function ChatCanvas({
                   onFollowUp={onFollowUp}
                   isFirst={isFirst}
                   overrideText={isFirst ? undefined : message.content}
+                  followUpOptions={message.followUpOptions}
                 />
               );
             })}
