@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 import { runSearch, getSearchSession, listSearchSessions, buildSearchResultFromPapers, overwriteSearchSession, rerunSearchIntoExistingSession } from "../lib/search/index";
-import type { SearchProgressEvent, RankedPaper, SearchSessionDetail } from "../lib/search/types";
+import type { SearchProgressEvent, RankedPaper, SearchSessionDetail, EvidenceSnapshot } from "../lib/search/types";
+import { rankPapers, buildEvidenceSnapshot } from "../lib/search/ranking";
 import { sanitiseText } from "../lib/documentExtraction";
 import { analyseDocument } from "../lib/documentAnalysisService";
 import { packAnalysisForStorage } from "../lib/analysisContract";
@@ -247,34 +248,62 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
       
       let papersForSynthesis: RankedPaper[] = session.papers;
       let newPapers: RankedPaper[] = [];
+      let mergedPapers: RankedPaper[] = session.papers;
+      let mergedSnapshot: EvidenceSnapshot = session.evidenceSnapshot;
       
       if (action.actionType === "refine_current_canvas" && action.reuseCurrentPapers) {
         // Just filter existing papers
         papersForSynthesis = applyPaperFilters(session, action.filters);
+        mergedPapers = papersForSynthesis;
+        mergedSnapshot = buildEvidenceSnapshot(mergedPapers);
         
         if (papersForSynthesis.length === 0) {
-          // Filtered to nothing - need to retrieve
+          // Filtered to nothing — run focused retrieval and merge
           const effectiveQuery = action.refinedQuery?.trim() || `${session.query} ${trimmed}`;
           await rerunSearchIntoExistingSession(req.session.userId!, id, effectiveQuery);
+          const rerunSession = await getSearchSession(id, req.session.userId!);
+          if (rerunSession) {
+            const existingIds = new Set(session.papers.map(p => p.externalId));
+            const trulyNewPapers = (rerunSession.papers as RankedPaper[]).filter(
+              p => !existingIds.has(p.externalId)
+            );
+            const combined = [...session.papers, ...trulyNewPapers] as RankedPaper[];
+            mergedPapers = rankPapers(combined, session.plan);
+            mergedSnapshot = buildEvidenceSnapshot(mergedPapers);
+            newPapers = trulyNewPapers;
+            papersForSynthesis = mergedPapers;
+          }
           retrievalPerformed = true;
+          papersAfter = mergedPapers.length;
+        } else {
+          papersAfter = mergedPapers.length;
         }
       } else {
-        // Need new retrieval
+        // Need new retrieval — run focused search then MERGE papers into session
         const effectiveQuery = action.refinedQuery?.trim() || `${session.query} ${trimmed}`;
-        await rerunSearchIntoExistingSession(req.session.userId!, id, effectiveQuery);
-        retrievalPerformed = true;
-      }
-      
-      // Get updated session after potential retrieval
-      let updatedSessionForSynthesis = session;
-      if (retrievalPerformed) {
-        updatedSessionForSynthesis = await getSearchSession(id, req.session.userId!) || session;
-        papersForSynthesis = updatedSessionForSynthesis.papers;
-        papersAfter = papersForSynthesis.length;
         
-        // Find which papers are new (not in original session)
-        const originalPaperIds = new Set(session.papers.map(p => p.externalId));
-        newPapers = papersForSynthesis.filter(p => !originalPaperIds.has(p.externalId));
+        // Run focused search (replaces session temporarily)
+        await rerunSearchIntoExistingSession(req.session.userId!, id, effectiveQuery);
+        
+        // Read back the rerun results (new papers only)
+        const rerunSession = await getSearchSession(id, req.session.userId!);
+        if (rerunSession) {
+          // Merge: deduplicate by externalId, keep original papers + add truly new ones
+          const existingIds = new Set(session.papers.map(p => p.externalId));
+          const trulyNewPapers = (rerunSession.papers as RankedPaper[]).filter(
+            p => !existingIds.has(p.externalId)
+          );
+          
+          // Combine and re-rank
+          const combined = [...session.papers, ...trulyNewPapers] as RankedPaper[];
+          mergedPapers = rankPapers(combined, session.plan);
+          mergedSnapshot = buildEvidenceSnapshot(mergedPapers);
+          newPapers = trulyNewPapers;
+          papersForSynthesis = mergedPapers;
+        }
+        
+        retrievalPerformed = true;
+        papersAfter = mergedPapers.length;
       }
       
       canvasChanged = true;
@@ -287,17 +316,31 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
         existingPapers: session.papers,
         newPapers: newPapers,
         previousSynthesis: session.synthesisText,
-        evidenceSnapshot: updatedSessionForSynthesis.evidenceSnapshot,
+        evidenceSnapshot: mergedSnapshot,
       });
 
       // P0: Grounding validation on follow-up synthesis
-      const grounding = validateGrounding(synthesis.synthesisText, papersForSynthesis, updatedSessionForSynthesis.evidenceSnapshot);
+      const grounding = validateGrounding(synthesis.synthesisText, papersForSynthesis, mergedSnapshot);
       if (grounding.unsupportedNumericClaims > 0 || grounding.causalOverreach || grounding.studiesShowViolations > 0 || grounding.modelPriorLeakage > 0) {
         logger.warn({ unsupported: grounding.unsupportedNumericClaims, causalOverreach: grounding.causalOverreach, studiesShowViolations: grounding.studiesShowViolations, modelPriorLeakage: grounding.modelPriorLeakage }, "Grounding issues in follow-up (canvas_update)");
       }
       const followUpEvidenceSpans = buildEvidenceSpans(synthesis.synthesisText, papersForSynthesis, session.plan.entities);
       const spanDiag = computeSpanDiagnostics(followUpEvidenceSpans);
       logger.debug({ totalClaims: spanDiag.totalClaims, claimsWithAnySupport: spanDiag.claimsWithAnySupport }, "Follow-up evidence span diagnostics (canvas_update)");
+
+      // Persist merged session with follow-up synthesis
+      await overwriteSearchSession(id, {
+        query: session.query,
+        plan: session.plan,
+        synthesisText: synthesis.synthesisText,
+        confidence: synthesis.confidence,
+        noEvidence: mergedPapers.length === 0,
+        evidenceSnapshot: mergedSnapshot,
+        papers: mergedPapers,
+        followUpOptions: synthesis.followUpOptions ?? session.followUpOptions,
+        evidenceSpans: followUpEvidenceSpans,
+        coverageNote: "abstracts_only",
+      } as any);
       
       assistantContent = synthesis.synthesisText;
     }
