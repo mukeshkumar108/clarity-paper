@@ -12,6 +12,7 @@ import { judgeRetrievalQuality, filterTopicallyWeakPapers } from "./retrievalJud
 import { repairRetrieval } from "./queryRepair";
 import { validateGrounding } from "./groundingValidator";
 import { buildEvidenceSpans, computeSpanDiagnostics } from "./evidenceSpans";
+import { detectContradictions } from "./contradictionDetector";
 import { enrichWithUnpaywall } from "./unpaywallClient";
 import { logger } from "../logger";
 import type { SearchResult, SearchProgressEvent, RetrievedPaper, RankedPaper, DebugMetadata, PipelineLatency, EvidenceSpan, GroundingDiagnostics, RetrievalSourceCounts, SearchSessionDetail, SearchSessionMessage, SearchFocusState, ResearchPlan } from "./types";
@@ -590,6 +591,15 @@ export async function runSearch(
 
   const snapshot = buildEvidenceSnapshot(finalPapers);
   const noEvidence = finalPapers.length === 0;
+
+  // Detect contradictions between top-fit papers
+  const contradictions = detectContradictions(finalPapers);
+  if (contradictions.length > 0) {
+    logger.info(
+      { count: contradictions.length },
+      "Contradictions detected between papers",
+    );
+  }
   const finalSourceCounts = countSources(finalPapers);
 
   logger.info(
@@ -613,7 +623,7 @@ export async function runSearch(
   let synthesis: SynthesisOutput;
   try {
     synthesis = await Promise.race([
-      synthesisePapers(plan, finalPapers, snapshot),
+      synthesisePapers(plan, finalPapers, snapshot, contradictions),
       synthesisTimeout(SYNTHESIS_TIMEOUT_MS),
     ]);
   } catch (err) {

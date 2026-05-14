@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import type { SearchResult, SearchSessionMessage, RankedPaper, EvidenceSpan } from "@/lib/search-types";
 import { SynthesisAnswer } from "./SynthesisAnswer";
 import { SynthesisSkeleton } from "./SynthesisSkeleton";
@@ -7,7 +7,19 @@ import { PaperCard } from "./PaperCard";
 import { EvidencePanel } from "./EvidencePanel";
 import { FollowUpOptions } from "./FollowUpOptions";
 import { MainRefineInput } from "./MainRefineInput";
-import { User, Bot, Sparkles, ScrollText } from "lucide-react";
+import { FilterChips, type EvidenceFilter } from "./FilterChips";
+import { customFetch } from "@workspace/api-client-react";
+import { User, Bot, Sparkles, ScrollText, Loader2, FileSearch } from "lucide-react";
+
+interface DeepReadResult {
+  title: string;
+  briefSummary: string;
+  plainEnglishSummary: string;
+  keyFindings: Array<{ header: string; body: string }>;
+  methodology: string;
+  limitations: string;
+  confidenceLevel: string;
+}
 
 interface ChatCanvasProps {
   result: SearchResult;
@@ -136,17 +148,20 @@ function AssistantMessage({
   isFirst = false,
   overrideText,
   followUpOptions,
+  evidenceSnapshot,
 }: {
   result: SearchResult;
   onFollowUp: (query: string) => void;
   isFirst?: boolean;
   overrideText?: string;
   followUpOptions?: string[];
+  evidenceSnapshot?: SearchResult["evidenceSnapshot"];
 }) {
   const [showEvidence, setShowEvidence] = useState(false);
   const recs = getRecommendedPapers(isFirst ? result.papers : []);
   const text = overrideText ?? result.synthesisText;
   const options = followUpOptions ?? (isFirst ? result.followUpOptions : []);
+  const snapshot = evidenceSnapshot ?? result.evidenceSnapshot;
 
   return (
     <div className="flex gap-3">
@@ -167,7 +182,7 @@ function AssistantMessage({
 
           {/* Evidence inline */}
           <CompactEvidence
-            snapshot={result.evidenceSnapshot}
+            snapshot={snapshot}
             spans={result.evidenceSpans}
             coverageNote={result.coverageNote}
             isExpanded={showEvidence}
@@ -224,6 +239,159 @@ function PapersSidebar({
   const groups = computeTurnGroups(papers, messages);
   const recs = getRecommendedPapers(papers);
   const [showEvidence, setShowEvidence] = useState(false);
+  const [expandedPaper, setExpandedPaper] = useState<RankedPaper | null>(null);
+  const [deepReadResult, setDeepReadResult] = useState<DeepReadResult | null>(null);
+  const [deepReadLoading, setDeepReadLoading] = useState(false);
+
+  // Expanded paper detail view
+  if (expandedPaper) {
+    return (
+      <div className="space-y-4 sticky top-4">
+        <button
+          onClick={() => setExpandedPaper(null)}
+          className="text-[11px] font-medium text-muted-stone hover:text-deep-shadow flex items-center gap-1"
+        >
+          ← Back to papers
+        </button>
+        <div className="bg-white/60 border border-pebble-gray/70 rounded-xl p-4 space-y-3">
+          <div>
+            <h3 className="text-[14px] font-semibold text-deep-shadow leading-snug">
+              {expandedPaper.title}
+            </h3>
+            <p className="text-[12px] text-muted-stone mt-1">
+              {expandedPaper.authors.slice(0, 3).join(", ")}
+              {expandedPaper.authors.length > 3 ? " et al." : ""}
+              {expandedPaper.year ? ` (${expandedPaper.year})` : ""}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+              expandedPaper.evidenceBucket === "strongest"
+                ? "bg-forest-green-action/10 text-forest-green-action"
+                : expandedPaper.evidenceBucket === "mechanistic"
+                  ? "bg-goldenrod-accent/10 text-goldenrod-accent"
+                  : "bg-pebble-gray/40 text-muted-stone"
+            }`}>
+              {expandedPaper.evidenceBucket === "strongest" ? "Strong evidence" :
+               expandedPaper.evidenceBucket === "human_observational" ? "Observational" :
+               expandedPaper.evidenceBucket === "mechanistic" ? "Mechanistic" :
+               expandedPaper.evidenceBucket === "conflicting" ? "Conflicting" : "Background"}
+            </span>
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-pebble-gray/40 text-muted-stone">
+              {expandedPaper.studyDesign === "meta_analysis" ? "Meta-analysis" :
+               expandedPaper.studyDesign === "systematic_review" ? "Systematic review" :
+               expandedPaper.studyDesign === "rct" ? "RCT" :
+               expandedPaper.studyDesign === "cohort" ? "Cohort" :
+               expandedPaper.studyDesign === "cross_sectional" ? "Cross-sectional" :
+               expandedPaper.studyDesign}
+            </span>
+            {expandedPaper.evidenceFit && (
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                expandedPaper.evidenceFit.overall === "direct" ? "bg-forest-green-action/10 text-forest-green-action" :
+                expandedPaper.evidenceFit.overall === "adjacent" ? "bg-goldenrod-accent/10 text-goldenrod-accent" :
+                "bg-pebble-gray/40 text-muted-stone"
+              }`}>
+                {expandedPaper.evidenceFit.overall === "direct" ? "Direct fit" :
+                 expandedPaper.evidenceFit.overall === "adjacent" ? "Adjacent" :
+                 expandedPaper.evidenceFit.overall === "weak" ? "Weak fit" : "Mismatch"}
+              </span>
+            )}
+          </div>
+
+          {expandedPaper.plainSummary && (
+            <p className="text-[13px] text-deep-shadow leading-relaxed">
+              {expandedPaper.plainSummary}
+            </p>
+          )}
+
+          <div className="text-[13px] text-deep-shadow leading-relaxed max-h-[300px] overflow-y-auto border-t border-pebble-gray/20 pt-3">
+            {expandedPaper.abstract}
+          </div>
+
+          {/* Deep read: editorial review */}
+          <div className="border-t border-pebble-gray/20 pt-3">
+            {!deepReadResult && !deepReadLoading && (
+              <button
+                onClick={async () => {
+                  setDeepReadLoading(true);
+                  try {
+                    const result = await customFetch<DeepReadResult>("/api/search/deep-read", {
+                      method: "POST",
+                      body: JSON.stringify({ abstract: expandedPaper.abstract, title: expandedPaper.title }),
+                    });
+                    setDeepReadResult(result);
+                  } catch {
+                    setDeepReadResult({ title: "", briefSummary: "Could not load deep read. Please try again.", plainEnglishSummary: "", keyFindings: [], methodology: "", limitations: "", confidenceLevel: "" });
+                  } finally {
+                    setDeepReadLoading(false);
+                  }
+                }}
+                className="flex items-center gap-1.5 text-[12px] font-medium text-onyx-outline hover:text-deep-shadow transition-colors"
+              >
+                <FileSearch className="w-3.5 h-3.5" />
+                Deep read — Clarity editorial review
+              </button>
+            )}
+            {deepReadLoading && (
+              <div className="flex items-center gap-2 text-[12px] text-muted-stone">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Analysing paper...
+              </div>
+            )}
+            {deepReadResult && (
+              <div className="space-y-3">
+                <p className="text-[13px] text-deep-shadow leading-relaxed font-medium">
+                  {deepReadResult.plainEnglishSummary || deepReadResult.briefSummary}
+                </p>
+                {deepReadResult.keyFindings?.length > 0 && (
+                  <div className="space-y-2">
+                    {deepReadResult.keyFindings.slice(0, 3).map((f, i) => (
+                      <div key={i}>
+                        <p className="text-[12px] font-medium text-deep-shadow">{f.header}</p>
+                        <p className="text-[12px] text-muted-stone leading-relaxed">{f.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {deepReadResult.limitations && (
+                  <p className="text-[12px] text-muted-stone leading-relaxed border-t border-pebble-gray/20 pt-2">
+                    {deepReadResult.limitations}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 pt-2 border-t border-pebble-gray/20 text-[11px] text-muted-stone">
+            {expandedPaper.doi && (
+              <a
+                href={`https://doi.org/${expandedPaper.doi}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-onyx-outline underline"
+              >
+                View source
+              </a>
+            )}
+            {expandedPaper.openAccessPdfUrl && (
+              <a
+                href={expandedPaper.openAccessPdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-onyx-outline underline"
+              >
+                Open access PDF
+              </a>
+            )}
+            {expandedPaper.citationCount != null && (
+              <span>{expandedPaper.citationCount} citations</span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (papers.length === 0) return null;
 
@@ -258,13 +426,18 @@ function PapersSidebar({
           </div>
           <div className="space-y-2.5">
             {recs.map((paper, idx) => (
-              <PaperCard
+              <div
                 key={paper.externalId}
-                paper={paper}
-                index={idx}
-                displayGroup="start"
-                showFraming={false}
-              />
+                onClick={() => setExpandedPaper(paper)}
+                className="cursor-pointer hover:ring-1 hover:ring-pebble-gray/50 rounded-lg transition-all"
+              >
+                <PaperCard
+                  paper={paper}
+                  index={idx}
+                  displayGroup="start"
+                  showFraming={false}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -288,19 +461,24 @@ function PapersSidebar({
           </div>
           <div className="space-y-2.5">
             {group.papers.map((paper, idx) => (
-              <PaperCard
+              <div
                 key={paper.externalId}
-                paper={paper}
-                index={idx}
-                displayGroup={
-                  paper.evidenceBucket === "strongest"
-                    ? "start"
-                    : paper.evidenceBucket === "mechanistic"
-                      ? "early"
-                      : "background"
-                }
-                showFraming={false}
-              />
+                onClick={() => setExpandedPaper(paper)}
+                className="cursor-pointer hover:ring-1 hover:ring-pebble-gray/50 rounded-lg transition-all"
+              >
+                <PaperCard
+                  paper={paper}
+                  index={idx}
+                  displayGroup={
+                    paper.evidenceBucket === "strongest"
+                      ? "start"
+                      : paper.evidenceBucket === "mechanistic"
+                        ? "early"
+                        : "background"
+                  }
+                  showFraming={false}
+                />
+              </div>
             ))}
           </div>
         </div>
@@ -309,13 +487,18 @@ function PapersSidebar({
       {groups.length === 0 && (
         <div className="space-y-2.5">
           {papers.map((paper, idx) => (
-            <PaperCard
+            <div
               key={paper.externalId}
-              paper={paper}
-              index={idx}
-              displayGroup={paper.evidenceBucket === "strongest" ? "start" : "background"}
-              showFraming={false}
-            />
+              onClick={() => setExpandedPaper(paper)}
+              className="cursor-pointer hover:ring-1 hover:ring-pebble-gray/50 rounded-lg transition-all"
+            >
+              <PaperCard
+                paper={paper}
+                index={idx}
+                displayGroup={paper.evidenceBucket === "strongest" ? "start" : "background"}
+                showFraming={false}
+              />
+            </div>
           ))}
         </div>
       )}
@@ -345,6 +528,44 @@ export function ChatCanvas({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, result.synthesisText]);
+
+  // Filter state: client-side evidence-grade filter
+  const [activeFilter, setActiveFilter] = useState<EvidenceFilter>("all");
+
+  const { filteredPapers, filteredSnapshot } = useMemo(() => {
+    if (activeFilter === "all") {
+      return { filteredPapers: result.papers, filteredSnapshot: result.evidenceSnapshot };
+    }
+
+    let papers = result.papers;
+
+    if (activeFilter === "rct_meta") {
+      papers = papers.filter(
+        (p) =>
+          p.studyDesign === "meta_analysis" ||
+          p.studyDesign === "systematic_review" ||
+          p.studyDesign === "rct",
+      );
+    } else if (activeFilter === "human_only") {
+      papers = papers.filter(
+        (p) =>
+          p.populationType === "human" || p.populationType === "unknown",
+      );
+    }
+
+    // Recalculate snapshot from filtered papers
+    const snapshot = {
+      metaAnalyses: papers.filter((p) => p.studyDesign === "meta_analysis" || p.studyDesign === "systematic_review").length,
+      rcts: papers.filter((p) => p.studyDesign === "rct").length,
+      humanObservational: papers.filter((p) => p.evidenceBucket === "human_observational").length,
+      mechanistic: papers.filter((p) => p.evidenceBucket === "mechanistic").length,
+      conflicting: papers.filter((p) => p.evidenceBucket === "conflicting").length,
+      totalPapers: papers.length,
+      overallConfidence: result.evidenceSnapshot.overallConfidence,
+    };
+
+    return { filteredPapers: papers, filteredSnapshot: snapshot };
+  }, [result.papers, activeFilter, result.evidenceSnapshot]);
 
   // Build a uniform message list: initial synthesis + subsequent turns
   const allMessages: Array<{
@@ -416,6 +637,7 @@ export function ChatCanvas({
                   isFirst={isFirst}
                   overrideText={isFirst ? undefined : message.content}
                   followUpOptions={message.followUpOptions}
+                  evidenceSnapshot={isFirst ? filteredSnapshot : undefined}
                 />
               );
             })}
@@ -426,7 +648,8 @@ export function ChatCanvas({
 
         {/* Input */}
         {!synthesisLoading && onRefine && (
-          <div className="pt-4">
+          <div className="pt-4 space-y-3">
+            <FilterChips active={activeFilter} onChange={setActiveFilter} />
             <MainRefineInput
               onSubmit={onRefine}
               isSubmitting={isRefining}
@@ -439,7 +662,7 @@ export function ChatCanvas({
       {/* Right column: persistent paper sidebar */}
       <div className="hidden md:block">
         <PapersSidebar
-          papers={result.papers}
+          papers={filteredPapers}
           messages={messages}
           evidenceSpans={result.evidenceSpans}
         />

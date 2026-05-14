@@ -412,6 +412,49 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
   }
 });
 
+// POST /search/deep-read — run Pass 1+Pass 2 on a paper's abstract synchronously
+router.post("/search/deep-read", requireAuth, async (req, res): Promise<void> => {
+  const { abstract, title } = req.body as {
+    abstract?: string;
+    title?: string;
+  };
+
+  if (!abstract || abstract.trim().length < 100) {
+    res.status(400).json({ error: "abstract is required (min 100 chars)" });
+    return;
+  }
+
+  try {
+    const sanitised = sanitiseText(abstract.trim());
+
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, req.session.userId!));
+    const preferredLanguage = user?.preferredLanguage ?? "English";
+
+    const result = await analyseDocument(
+      sanitised,
+      "research_paper",
+      "",
+      title ? `Deep read: ${title}` : "Deep read from Clarity Search",
+      preferredLanguage,
+      { fastMode: true },
+    );
+
+    const stored = packAnalysisForStorage(result);
+    res.json({
+      title: result.paperMetadata?.title ?? title ?? "",
+      briefSummary: stored.briefSummary,
+      plainEnglishSummary: stored.plainEnglishSummary,
+      keyFindings: stored.keyFindings,
+      methodology: stored.methodology,
+      limitations: stored.limitations,
+      confidenceLevel: result.confidenceLevel,
+    });
+  } catch (err) {
+    logger.error({ err }, "Deep read failed");
+    res.status(500).json({ error: "Deep read failed. Please try again." });
+  }
+});
+
 // POST /search/analyse-paper — create a document from a search result and kick off analysis
 router.post("/search/analyse-paper", requireAuth, async (req, res): Promise<void> => {
   const { doi, title, abstract, authors, year } = req.body as {

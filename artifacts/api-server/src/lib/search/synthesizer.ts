@@ -2,6 +2,7 @@ import { z } from "zod";
 import { callLLM } from "../openRouterProvider";
 import { logger } from "../logger";
 import type { RankedPaper, ResearchPlan, EvidenceSnapshot } from "./types";
+import type { Contradiction } from "./contradictionDetector";
 import { extractClaims } from "./evidenceSpans";
 
 function deduplicateFollowUpOptions(options: string[]): string[] {
@@ -183,6 +184,7 @@ export async function synthesisePapers(
   plan: ResearchPlan,
   papers: RankedPaper[],
   snapshot: EvidenceSnapshot,
+  contradictions?: Contradiction[],
 ): Promise<SynthesisOutput> {
   const papersText =
     papers.length > 0
@@ -222,6 +224,21 @@ export async function synthesisePapers(
       ? `- COMPARISON INSTRUCTION: Distinguish head-to-head trials from single-intervention studies. If direct comparison evidence exists, lead with it. If no direct comparisons exist, say so explicitly. Do NOT present single-intervention evidence as if it answers the comparison.`
       : "",
     "",
+    contradictions && contradictions.length > 0
+      ? [
+          `CONTRADICTIONS DETECTED — papers disagree on the direction of effect:`,
+          ...contradictions.map((c, i) =>
+            [
+              `  [${i + 1}] "${c.paperA.title}" → ${c.paperA.findingSummary}`,
+              `      vs "${c.paperB.title}" → ${c.paperB.findingSummary}`,
+              `      Likely reason: ${c.likelyReason}`,
+            ].join("\n"),
+          ),
+          "",
+          `You MUST surface these contradictions in your answer. Explain WHY the papers might disagree (${contradictions.map(c => c.likelyReason).join("; ")}). Don't just say "the evidence is mixed" — name the conflict directly.`,
+          "",
+        ].join("\n")
+      : "",
     `THE PAPERS:`,
     papersText,
   ].filter(Boolean).join("\n");
