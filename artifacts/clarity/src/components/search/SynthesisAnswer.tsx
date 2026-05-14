@@ -1,7 +1,7 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import type { EvidenceSnapshot } from "@/lib/search-types";
-import { AlertTriangle, CheckCircle2, Info, TrendingUp, FileText } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, TrendingUp } from "lucide-react";
 
 const CONFIDENCE_CONFIG: Record<
   string,
@@ -87,10 +87,9 @@ export function SynthesisAnswer({
 
         {/* P4: Abstract-only coverage notice */}
         {coverageNote === "abstracts_only" && (
-          <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-stone/70">
-            <FileText className="w-3 h-3" />
-            <span>Based on paper abstracts · full texts not reviewed yet</span>
-          </div>
+          <span className="text-[11px] text-muted-stone/50">
+            Abstracts only · full texts not reviewed
+          </span>
         )}
       </div>
     </div>

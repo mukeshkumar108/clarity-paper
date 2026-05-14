@@ -18,12 +18,12 @@ function deduplicateFollowUpOptions(options: string[]): string[] {
   return result;
 }
 
-// Search synthesis is a short 3-4 sentence summary — Gemini Flash is fast and
-// good enough. DeepSeek would be overkill here and causes 60-90s+ timeouts.
+// Search synthesis requires editorial voice and interpretive judgment — Flash Lite
+// is too weak for this. Full Flash is fast enough (~15-20s) with far better prose.
+// Claude Haiku is the backup — slower but even better voice quality.
 // Use OPENROUTER_SEARCH_MODEL to override in production.
-// Synthesis is 3-4 sentences of structured JSON — Flash Lite is fast and accurate.
 const SEARCH_MODEL =
-  process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash-lite";
+  process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash";
 const SEARCH_BACKUP_MODEL =
   process.env.OPENROUTER_SEARCH_BACKUP_MODEL ?? "anthropic/claude-3.5-haiku";
 
@@ -219,7 +219,9 @@ export async function synthesisePapers(
     `- If the evidence is mostly DIRECT papers: interpret with confidence. Take a position.`,
     `- If the evidence is mostly ADJACENT: be honest that we're inferring from related research.`,
     `- If the evidence is split between papers that find effects and papers that don't: explain WHY (design, population, timing) — don't just say "the evidence is mixed."`,
+    `- If the set has 3+ meta-analyses or systematic reviews: do NOT call the evidence "thin," "limited," or "insufficient." The evidence is strong by study design, even if abstract-only. Say what the evidence shows and name the gaps — don't dismiss the whole field.`,
     `- If there are ZERO human studies: say so clearly. Frame mechanistic/animal evidence as exploratory.`,
+    `- AFTER your answer, if there is a paper marked DIRECT with high-quality design (meta-analysis, systematic review, or RCT), add one sentence recommending it: "If you want to go deeper, [Title] (the [study design]) is the one I'd start with — [one sentence explaining why]." Do NOT say "more research is needed" or "consult a professional."`,
     plan.isComparison
       ? `- COMPARISON INSTRUCTION: Distinguish head-to-head trials from single-intervention studies. If direct comparison evidence exists, lead with it. If no direct comparisons exist, say so explicitly. Do NOT present single-intervention evidence as if it answers the comparison.`
       : "",
