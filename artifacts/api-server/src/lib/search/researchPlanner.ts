@@ -58,6 +58,7 @@ const researchPlanSchema = z.object({
   isComparison: z.boolean(),
   comparisonTarget: z.string().nullable(),
   isPracticalQuery: z.boolean(),
+  conversationDepth: z.enum(["orient", "answer", "review"]),
 });
 
 const PLANNER_SYSTEM_PROMPT = `You are a scientific research planning assistant. Your job is to analyse a user's question or claim about health, supplements, or scientific topics, and produce a structured research plan that will guide evidence retrieval.
@@ -151,6 +152,12 @@ Detect whether the user is asking for practical guidance — what to do or think
   - Personal context framing: "I'm a 35-year-old", "I exercise 3x/week"
 - isPracticalQuery: false for pure evidence questions ("what does science say about X?", "is there evidence that X?", "studies on X")
 
+CONVERSATION DEPTH
+How much depth should the initial answer cover?
+- conversationDepth: "orient" for broad, exploratory, open-ended queries: "tell me about X", "what does science say about X generally", "give me an overview of Y". These deserve one sharp finding plus open threads — not an exhaustive review.
+- conversationDepth: "review" only when the user explicitly wants comprehensive coverage: "give me a full review", "cover everything about X", "I want the complete picture", "exhaustive overview".
+- conversationDepth: "answer" for everything else — specific questions, comparisons, dose questions, claim-checks. Answer precisely, don't over-expand.
+
 RULES
 - Never fabricate entities not present in the user's question
 - Never generate queries that are just synonyms of each other
@@ -222,6 +229,7 @@ function normalizeResearchPlan(plan: ResearchPlan): ResearchPlan {
     isComparison: plan.isComparison ?? false,
     comparisonTarget: plan.comparisonTarget ?? null,
     isPracticalQuery: plan.isPracticalQuery ?? false,
+    conversationDepth: plan.conversationDepth ?? "answer",
     directQueryVariants: finalDirect,
     contextQueryVariants: finalContext,
     queryVariants: [...finalDirect, ...finalContext],

@@ -26,6 +26,8 @@ export interface ResearchPlan {
   comparisonTarget: string | null;
   /** P3: Whether the user is asking for practical guidance rather than an evidence summary */
   isPracticalQuery: boolean;
+  /** Conversational pacing: how deep should the initial answer go? */
+  conversationDepth: "orient" | "answer" | "review";
 }
 
 export type StudyDesign =

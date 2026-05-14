@@ -18,26 +18,20 @@ function deduplicateFollowUpOptions(options: string[]): string[] {
   return result;
 }
 
-// Search synthesis split into three models run in parallel:
-// - Editorial: synthesisText (Flash full — needs voice + judgment)
-// - Follow-ups: followUpOptions (Flash Lite — creative framing, cheap)
-// - Mechanical: paperSummaries + confidence + noEvidence (Flash Lite — fast extraction)
-// Total latency = max(editorial, mechanical, followUps) ≈ same as single call but better output.
+// Search synthesis split into two models run in parallel:
+// - Editorial: synthesisText + openThreads (Claude — needs voice + judgment)
+// - Mechanical: paperSummaries + confidence + noEvidence (Gemini Lite — fast extraction)
+// openThreads replaces the old Gemini follow-up chips call — Claude identifies what it left unsaid.
 const SEARCH_EDITORIAL_MODEL =
   process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash";
 const SEARCH_MECHANICAL_MODEL =
   process.env.OPENROUTER_SEARCH_LITE_MODEL ?? "google/gemini-2.5-flash-lite";
-const SEARCH_FOLLOWUP_MODEL =
-  process.env.OPENROUTER_SEARCH_FOLLOWUP_MODEL ?? "google/gemini-2.5-flash-lite";
 const SEARCH_BACKUP_MODEL =
   process.env.OPENROUTER_SEARCH_BACKUP_MODEL ?? "anthropic/claude-3.5-haiku";
 
 const synthesisOutputSchema = z.object({
   synthesisText: z.string(),
-});
-
-const followUpSchema = z.object({
-  followUpOptions: z.array(z.string()).min(2).max(5),
+  openThreads: z.array(z.string()).min(2).max(4),
 });
 
 const mechanicalOutputSchema = z.object({
@@ -51,7 +45,7 @@ const mechanicalOutputSchema = z.object({
   ),
 });
 
-export type SynthesisOutput = z.infer<typeof synthesisOutputSchema> & z.infer<typeof mechanicalOutputSchema> & z.infer<typeof followUpSchema>;
+export type SynthesisOutput = z.infer<typeof synthesisOutputSchema> & z.infer<typeof mechanicalOutputSchema> & { followUpOptions: string[] };
 
 const SYNTHESIS_SYSTEM_PROMPT = `You've spent years reading research — the careful kind, not the headlines. You know how studies are designed, where they break down, and what the gap between a finding and a real-world implication actually looks like. You find that gap genuinely interesting, not just something to hedge around.
 
@@ -125,8 +119,9 @@ What the good version does: opens with the interesting thing (not the expected t
 
 Return strict JSON with:
 - synthesisText: your full answer. No required sections. No required structure. Write so the structure comes from the evidence and the story, not from a template.
+- openThreads: 2–4 threads you deliberately left unsaid. These become the follow-up chips the user can click — so make them feel like natural next questions, not headers. Specific angles you noticed, surprising caveats you didn't have space to explore, practical implications worth digging into. Write them as short questions from the user's perspective. Examples: "Does this only work in sleep-deprived people?", "What dose was actually used in the strongest studies?", "How does this compare to caffeine for the same outcome?"
 
-After your main answer, if there's a DIRECT paper with strong design (meta-analysis, systematic review, RCT) worth reading, add one sentence: "If you want to go deeper, [Title] is the one I'd start with — [one sentence why it specifically matters]."
+After your main answer in synthesisText, if there's a DIRECT paper with strong design (meta-analysis, systematic review, RCT) worth reading, add one sentence: "If you want to go deeper, [Title] is the one I'd start with — [one sentence why it specifically matters]."
 
 NEVER end with: "Would you like to explore...", "Would you like me to...", "Let me know if...", "Would you like to dive deeper..." End with the most interesting specific thing you haven't said yet, or with a precise question that actually follows from what you explained.`;
 
@@ -137,18 +132,6 @@ OUTPUT STRICT JSON ONLY with these fields:
 - noEvidence: true if zero papers OR all papers are mechanistic/animal only OR no papers address the user's actual question
 - paperSummaries: for each paper, write a single vivid plain-English sentence about what this study actually found. Under 200 characters. Not the title. Note the population if relevant.`;
 
-const FOLLOW_UP_SYSTEM_PROMPT = `You generate genuinely useful follow-up questions for a scientific investigation. These should feel like natural curiosity, not database queries.
-
-Rules:
-- Each question should open a specific, useful direction — not a generic header
-- Questions should flow from gaps, contradictions, or practical angles in the evidence
-- Write as if a curious friend is asking: "I wonder about X" or "What about Y?"
-- Never: "long-term effects," "mechanism of action," "more research needed"
-- Always: specific populations, specific outcomes, specific comparisons, practical protocols
-
-For comparison queries, suggest questions about: direct head-to-head evidence, mechanism, specific populations, adherence/sustainability, how the comparison changes the evidence picture.
-
-Return strict JSON with: followUpOptions (array of strings).`;
 
 function extractRelevantAbstractText(
   abstract: string,
@@ -258,44 +241,6 @@ async function attemptMechanicalExtraction(
   return mechanicalOutputSchema.parse(data);
 }
 
-function buildFollowUpContext(
-  plan: ResearchPlan,
-  snapshot: EvidenceSnapshot,
-  papers: RankedPaper[],
-  isFirstTurn: boolean,
-  previousSynthesis?: string,
-): string {
-  const maxOptions = isFirstTurn ? 5 : 3;
-  const lines = [
-    `USER QUESTION: ${plan.userQuestion}`,
-    plan.isComparison ? `Comparison target: ${plan.comparisonTarget}` : "",
-    previousSynthesis ? `Previous answer summary: ${previousSynthesis.slice(0, 300)}` : "",
-    "",
-    `Evidence landscape: ${snapshot.metaAnalyses} meta-analyses, ${snapshot.rcts} RCTs, ${snapshot.humanObservational} observational, ${snapshot.mechanistic} mechanistic, ${snapshot.conflicting} conflicting`,
-    "",
-    `Top papers (titles only):`,
-    ...papers.slice(0, 5).map((p) => `  - ${p.title}`),
-    "",
-    `Generate exactly ${maxOptions} follow-up questions. ${isFirstTurn ? "First turn — broader exploration." : "Follow-up turn — more specific, more focused. Zoom in."}`,
-  ];
-  return lines.filter(Boolean).join("\n");
-}
-
-async function attemptFollowUpGeneration(
-  context: string,
-  model: string,
-  timeoutMs: number,
-): Promise<string[]> {
-  const raw = await callLLM(
-    FOLLOW_UP_SYSTEM_PROMPT,
-    context,
-    followUpSchema,
-    { model, temperature: 0.45, timeoutMs },
-  );
-  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-  const parsed = followUpSchema.parse(data);
-  return deduplicateFollowUpOptions(parsed.followUpOptions);
-}
 
 export async function synthesisePapers(
   plan: ResearchPlan,
@@ -317,9 +262,14 @@ export async function synthesisePapers(
       ? `\nCOMPARISON: The user wants to know if one approach is better than another. Comparison target: "${plan.comparisonTarget}". If direct comparison evidence exists, lead with it. If not, triangulate from single-intervention studies and clearly label the gap.`
       : ``,
     plan.isPracticalQuery
-      ? `\nPRACTICAL MODE — THIS IS A DECISION QUESTION, NOT A LITERATURE QUESTION:
-The user wants to know what to do. Start with your honest position: "Yes, this is worth taking seriously" or "The honest answer is that the evidence doesn't yet support doing X for Y." Then explain why. Frame everything in terms of what a real person should take away. If the evidence supports acting, say so. If it doesn't, say that. If the effect is real but modest, say exactly how modest and let them decide. Never bury the answer in study descriptions.`
+      ? `\nPRACTICAL MODE: The user is not asking for an evidence summary. They want to know what to do or think. Lead with what you'd actually tell them — a clear recommendation or honest position — then support it with the evidence. Don't lead with what studies found; lead with what that means for a real person making a real decision. If the evidence supports acting, say so plainly. If it doesn't, say that plainly too. If the effect is real but modest, give them the context to weigh it themselves.`
       : ``,
+    (() => {
+      const depth = plan.conversationDepth ?? "answer";
+      if (depth === "orient") return `\nCONVERSATION DEPTH — ORIENT: This is a broad exploratory question. Give your single clearest finding or framing — the most interesting specific thing you can say. Keep the prose focused. Leave the rest as openThreads; the conversation will go deeper if the user wants. Do not try to cover everything.`;
+      if (depth === "review") return `\nCONVERSATION DEPTH — REVIEW: The user wants comprehensive coverage. Be thorough — cover the main evidence threads, important sub-questions, nuances, and limitations. Use openThreads for truly residual angles.`;
+      return `\nCONVERSATION DEPTH — ANSWER: Answer the specific question precisely. Don't pad or expand beyond what was asked. Use openThreads for adjacent angles you noticed but didn't address.`;
+    })(),
     `\nKEY ANGLES: ${plan.entities.join(", ")}.`,
     plan.hiddenGoals?.length
       ? `Deeper interests: ${plan.hiddenGoals.join(", ")}. Frame toward these when evidence supports it.`
@@ -368,15 +318,15 @@ The user wants to know what to do. Start with your honest position: "Yes, this i
     papersText,
   ].filter(Boolean).join("\n");
 
-  // Run editorial, mechanical, and follow-up calls in parallel
-  const followUpContext = buildFollowUpContext(plan, snapshot, papers, true);
+  // Run editorial and mechanical calls in parallel.
+  // openThreads (what Claude deliberately left unsaid) replaces the old Gemini chip call.
 
   // Debug log: full synthesis context (only in non-production)
   if (process.env.NODE_ENV !== "production" || process.env.CLARITY_DEBUG_SYNTHESIS) {
-    logger.debug({ userMessage: userMessage.slice(0, 5000), followUpContext: followUpContext.slice(0, 2000), query: plan.userQuestion }, "Synthesis user message (debug)");
+    logger.debug({ userMessage: userMessage.slice(0, 5000), query: plan.userQuestion }, "Synthesis user message (debug)");
   }
 
-  const [editorialResult, mechanicalResult, followUpOptions] = await Promise.all([
+  const [editorialResult, mechanicalResult] = await Promise.all([
     (async (): Promise<z.infer<typeof synthesisOutputSchema>> => {
       try {
         const result = await attemptEditorialSynthesis(userMessage, SEARCH_EDITORIAL_MODEL, 60_000);
@@ -390,9 +340,10 @@ The user wants to know what to do. Start with your honest position: "Yes, this i
           return result;
         } catch (backupErr) {
           logger.error({ err: backupErr, query: plan.userQuestion }, "Editorial synthesis failed after backup");
-            return {
-              synthesisText: "The paper list is still worth browsing directly. We found relevant research, but the Clarity readout did not land cleanly this time.",
-            };
+          return {
+            synthesisText: "The paper list is still worth browsing directly. We found relevant research, but the Clarity readout did not land cleanly this time.",
+            openThreads: plan.followUpQuestions.slice(0, 4),
+          };
         }
       }
     })(),
@@ -413,22 +364,12 @@ The user wants to know what to do. Start with your honest position: "Yes, this i
         };
       }
     })(),
-    (async (): Promise<string[]> => {
-      try {
-        const options = await attemptFollowUpGeneration(followUpContext, SEARCH_FOLLOWUP_MODEL, 10_000);
-        logger.info({ model: SEARCH_FOLLOWUP_MODEL, query: plan.userQuestion }, "Follow-up generation succeeded");
-        return options;
-      } catch (err) {
-        logger.warn({ err, model: SEARCH_FOLLOWUP_MODEL, query: plan.userQuestion }, "Follow-up generation failed — using planner fallback");
-        return plan.followUpQuestions.slice(0, 5);
-      }
-    })(),
   ]);
 
   return {
     ...editorialResult,
     ...mechanicalResult,
-    followUpOptions,
+    followUpOptions: deduplicateFollowUpOptions(editorialResult.openThreads),
   };
 }
 
@@ -436,13 +377,13 @@ The user wants to know what to do. Start with your honest position: "Yes, this i
 // FOLLOW-UP SYNTHESIS — Answers user questions with delta context
 // ============================================================================
 
-// Follow-up synthesis returns only prose from Claude (same simple schema as initial synthesis).
-// confidence comes from evidenceSnapshot, chips generated separately by Gemini Lite.
-export interface FollowUpSynthesisOutput {
-  synthesisText: string;
-  followUpOptions: string[];
-  confidence: "preliminary" | "promising" | "moderate" | "strong";
-}
+const followUpOutputSchema = z.object({
+  synthesisText: z.string(),
+  confidence: z.enum(["preliminary", "promising", "moderate", "strong"]),
+  followUpOptions: z.array(z.string()).min(2).max(4),
+});
+
+export type FollowUpSynthesisOutput = z.infer<typeof followUpOutputSchema>;
 
 const FOLLOW_UP_SYNTHESIS_PROMPT = `You're picking up a thread in an ongoing investigation. The user asked a follow-up question — answer it directly and then show how it changes or deepens what we already know.
 
@@ -460,7 +401,12 @@ End with a takeaway more precise than before. Increasing resolution, not repeati
 
 Never end with "more research is needed." Never hedge so much the answer becomes meaningless. Make judgment calls.
 
-Return strict JSON with: synthesisText`;
+NEVER end with: "Would you like to explore...", "Would you like me to...", "Let me know if..." — end with the most precise specific thing you have to say.
+
+Return strict JSON with:
+- synthesisText: your follow-up answer
+- confidence: the evidence level ("preliminary" | "promising" | "moderate" | "strong")
+- followUpOptions: 2-4 specific follow-up questions that emerge naturally from THIS answer — not generic headers, but real next questions someone would genuinely want to ask`;
 
 interface FollowUpSynthesisParams {
   originalQuery: string;
@@ -475,13 +421,13 @@ interface FollowUpSynthesisParams {
   previousSynthesis: string;
   evidenceSnapshot: EvidenceSnapshot;
   plan: ResearchPlan;
-  /** Last 2–4 non-synthesis messages so the model knows what was already covered */
   recentMessages?: Array<{ role: "user" | "assistant"; content: string }>;
+  openThreads?: string[];
 }
 
 function formatPapersForFollowUp(papers: RankedPaper[], label: string, entities: string[] = []): string {
   if (papers.length === 0) return `${label}: None`;
-  
+
   return papers
     .slice(0, 8)
     .map((p, i) => {
@@ -519,15 +465,26 @@ export async function synthesiseFollowUpAnswer(
     evidenceSnapshot,
     plan,
     recentMessages,
+    openThreads,
   } = params;
 
   const hasNewPapers = newPapers.length > 0;
   const allPapers = [...existingPapers, ...newPapers];
 
-  // Conversation history block — lets Claude know what's already been covered in prior turns
+  const previousClaims = extractClaims(previousSynthesis);
+  const deduplicationBlock = previousClaims.length > 0
+    ? [
+        "⛔ DO NOT REPEAT — these claims were already established:",
+        ...previousClaims.map((c, i) => `  [${i + 1}] ${c}`),
+        "",
+        "Only surface what changed, what is new, or what directly answers the follow-up question. You may restate ONE sentence from above for context if necessary.",
+        "",
+      ]
+    : [];
+
   const conversationBlock = recentMessages && recentMessages.length > 0
     ? [
-        "CONVERSATION SO FAR (already covered — do not repeat these):",
+        "CONVERSATION SO FAR (already covered — do not repeat):",
         ...recentMessages.map(m =>
           `${m.role === "user" ? "User" : "You"}: ${m.content.slice(0, 400)}${m.content.length > 400 ? "..." : ""}`,
         ),
@@ -535,93 +492,94 @@ export async function synthesiseFollowUpAnswer(
       ]
     : [];
 
-  // Claim dedup from initial synthesis (skip if we already have conversation history — that covers it)
-  const previousClaims = recentMessages && recentMessages.length > 0 ? [] : extractClaims(previousSynthesis);
-  const deduplicationBlock = previousClaims.length > 0
+  const openThreadsBlock = openThreads && openThreads.length > 0
     ? [
-        "⛔ DO NOT REPEAT — these claims were already established in the first answer:",
-        ...previousClaims.map((c, i) => `  [${i + 1}] ${c}`),
-        "",
-        "Only surface what is new or what directly answers the follow-up question.",
+        "OPEN THREADS from the first answer (the user is likely exploring one of these now):",
+        ...openThreads.map((t, i) => `  [${i + 1}] ${t}`),
         "",
       ]
     : [];
+
+  const depthBlock = (() => {
+    const depth = plan.conversationDepth ?? "answer";
+    if (depth === "orient") return ["DEPTH: This is still an orientation conversation. Focus on the one most interesting new thing this follow-up adds. Don't try to cover everything.", ""];
+    if (depth === "review") return ["DEPTH: The user wants comprehensive coverage. Be thorough in this follow-up.", ""];
+    return [];
+  })();
 
   const userMessage = [
     `FOLLOW-UP INVESTIGATION BRIEFING:`,
     `──────────────────────────────────`,
     `Original query: ${originalQuery}`,
-    `Initial answer: ${previousSynthesis.slice(0, 600)}`,
+    `Previous understanding: ${previousSynthesis.slice(0, 800)}`,
     "",
     ...conversationBlock,
+    ...openThreadsBlock,
     ...deduplicationBlock,
-    `═══ CURRENT QUESTION ═══`,
-    `"${followUpQuestion}"`,
+    ...depthBlock,
+    `CURRENT QUESTION: ${followUpQuestion}`,
     `User's real intent: ${userIntent.mainQuestion}`,
     userIntent.comparisonTarget ? `Comparison target: ${userIntent.comparisonTarget}` : "",
-    userIntent.specificOutcome ? `Specific outcome: ${userIntent.specificOutcome}` : "",
+    userIntent.specificOutcome ? `Specific outcome of interest: ${userIntent.specificOutcome}` : "",
     "",
-    `ENTITY / OUTCOME SPOTLIGHT:`,
-    `  Specifically asked about: ${plan.entities.join(", ")}.`,
-    plan.hiddenGoals?.length ? `  Also interested in: ${plan.hiddenGoals.join(", ")}.` : "",
-    plan.isComparison ? `  Comparison against: ${plan.comparisonTarget}. Address explicitly.` : "",
-    "",
-    `EVIDENCE STATUS: ${hasNewPapers ? `${newPapers.length} new papers retrieved` : "Using existing evidence — go deeper, not broader"}`,
-    hasNewPapers ? `Name the new papers. Name their findings. Show how they shift the picture.` : "",
+    `EVIDENCE STATUS: ${hasNewPapers ? `Retrieved ${newPapers.length} new papers` : "Using existing evidence — going deeper, not broader"}`,
+    hasNewPapers
+      ? `No new papers were retrieved. Your job is to INTERPRET the existing evidence more carefully. Zoom in. Go deeper than the initial synthesis did on this specific angle.`
+      : ``,
     "",
     `EVIDENCE SNAPSHOT: ${evidenceSnapshot.metaAnalyses} meta/SR, ${evidenceSnapshot.rcts} RCTs, ${allPapers.length} total papers`,
     "",
-    `EXISTING PAPERS:`,
+    `EXISTING PAPERS — what we already had:`,
     formatPapersForFollowUp(existingPapers, "EXISTING", [...plan.entities, ...(plan.hiddenGoals ?? [])]),
     "",
-    `NEW PAPERS:`,
+    `NEW PAPERS — what was just retrieved:`,
     formatPapersForFollowUp(newPapers, "NEW", [...plan.entities, ...(plan.hiddenGoals ?? [])]),
   ].filter(Boolean).join("\n");
 
-  // Run Claude prose + Gemini Lite chips in parallel
-  const followUpChipContext = buildFollowUpContext(plan, evidenceSnapshot, allPapers.length > 0 ? allPapers : existingPapers, false, previousSynthesis);
+  const attempts = [
+    { label: "primary", model: SEARCH_EDITORIAL_MODEL, timeoutMs: 60_000 },
+    { label: "backup", model: SEARCH_BACKUP_MODEL, timeoutMs: 90_000 },
+  ] as const;
 
-  const [synthesisText, chipOptions] = await Promise.all([
-    // Prose: Claude (same simple schema as initial synthesis — no optional/nullable fields)
-    (async (): Promise<string> => {
-      for (const attempt of [
-        { model: SEARCH_EDITORIAL_MODEL, timeoutMs: 60_000 },
-        { model: SEARCH_BACKUP_MODEL, timeoutMs: 90_000 },
-      ]) {
-        try {
-          const raw = await callLLM(
-            FOLLOW_UP_SYNTHESIS_PROMPT,
-            userMessage,
-            synthesisOutputSchema,
-            { model: attempt.model, temperature: 0.45, timeoutMs: attempt.timeoutMs, maxTokens: 4096 },
-          );
-          const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-          const result = synthesisOutputSchema.parse(data);
-          logger.info({ model: attempt.model, hasNewPapers, query: followUpQuestion }, "Follow-up synthesis succeeded");
-          return result.synthesisText;
-        } catch (err) {
-          logger.warn({ err, model: attempt.model, query: followUpQuestion }, "Follow-up synthesis attempt failed");
-        }
-      }
-      logger.error({ query: followUpQuestion }, "Follow-up synthesis failed after all attempts");
-      return "I found relevant evidence but couldn't synthesize it cleanly this time. The papers are worth reviewing directly.";
-    })(),
-    // Chips: Gemini Lite
-    (async (): Promise<string[]> => {
-      try {
-        const options = await attemptFollowUpGeneration(followUpChipContext, SEARCH_FOLLOWUP_MODEL, 10_000);
-        logger.info({ model: SEARCH_FOLLOWUP_MODEL, query: followUpQuestion }, "Follow-up chip generation succeeded");
-        return options;
-      } catch {
-        return plan.followUpQuestions.slice(0, 4);
-      }
-    })(),
-  ]);
+  let lastError: unknown = null;
+
+  for (const attempt of attempts) {
+    try {
+      const raw = await callLLM(
+        FOLLOW_UP_SYNTHESIS_PROMPT,
+        userMessage,
+        followUpOutputSchema,
+        { model: attempt.model, temperature: 0.45, timeoutMs: attempt.timeoutMs },
+      );
+
+      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const result = followUpOutputSchema.parse(data);
+      result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
+
+      logger.info(
+        { model: attempt.model, hasNewPapers, query: followUpQuestion },
+        "Follow-up synthesis succeeded",
+      );
+
+      return result;
+    } catch (err) {
+      lastError = err;
+      logger.warn(
+        { err, model: attempt.model, attempt: attempt.label, query: followUpQuestion },
+        "Follow-up synthesis attempt failed",
+      );
+    }
+  }
+
+  logger.error(
+    { err: lastError, query: followUpQuestion },
+    "Follow-up synthesis failed after retries",
+  );
 
   return {
-    synthesisText,
-    followUpOptions: deduplicateFollowUpOptions(chipOptions),
-    confidence: evidenceSnapshot.overallConfidence,
+    synthesisText: `I searched for evidence on your follow-up question, but the synthesis didn't come together cleanly. The papers ${hasNewPapers ? "I found" : "in this session"} are worth reviewing directly—they likely contain the answer.`,
+    confidence: "preliminary",
+    followUpOptions: plan.followUpQuestions.slice(0, 4),
   };
 }
 

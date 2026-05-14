@@ -238,6 +238,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
           .filter(m => m.kind !== "synthesis")
           .slice(-4)
           .map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
+        openThreads: session.followUpOptions,
       });
 
       // P0: Grounding validation on follow-up synthesis
@@ -331,6 +332,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
           .filter(m => m.kind !== "synthesis")
           .slice(-4)
           .map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
+        openThreads: session.followUpOptions,
       });
 
       // P0: Grounding validation on follow-up synthesis

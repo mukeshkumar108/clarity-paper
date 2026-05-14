@@ -257,6 +257,7 @@ function fallbackSynthesis(): SynthesisOutput {
   return {
     synthesisText:
       "The evidence synthesis took longer than expected. The retrieved papers are shown below — please review them directly for information on your question.",
+    openThreads: [],
     confidence: "preliminary",
     noEvidence: false,
     paperSummaries: [],
