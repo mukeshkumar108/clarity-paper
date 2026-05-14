@@ -3,7 +3,7 @@ import { callLLM } from "../openRouterProvider";
 import type { SearchSessionDetail, RankedPaper } from "./types";
 
 const ORCHESTRATOR_MODEL =
-  process.env.OPENROUTER_ORCHESTRATOR_MODEL ?? process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash";
+  process.env.OPENROUTER_ORCHESTRATOR_MODEL ?? "google/gemini-2.5-flash";
 
 const sidebarActionSchema = z.object({
   actionType: z.enum([

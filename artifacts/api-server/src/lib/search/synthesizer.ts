@@ -29,6 +29,10 @@ const SEARCH_MECHANICAL_MODEL =
   process.env.OPENROUTER_SEARCH_LITE_MODEL ?? "google/gemini-2.5-flash-lite";
 const SEARCH_FOLLOWUP_MODEL =
   process.env.OPENROUTER_SEARCH_FOLLOWUP_MODEL ?? "google/gemini-2.5-flash-lite";
+// Follow-up synthesis uses a structured schema with optional/nullable fields.
+// Keep this on Gemini — Claude rejects those schemas via OpenRouter strict mode.
+const SEARCH_FOLLOWUP_SYNTHESIS_MODEL =
+  process.env.OPENROUTER_FOLLOWUP_SYNTHESIS_MODEL ?? "google/gemini-2.5-flash";
 const SEARCH_BACKUP_MODEL =
   process.env.OPENROUTER_SEARCH_BACKUP_MODEL ?? "anthropic/claude-3.5-haiku";
 
@@ -572,7 +576,7 @@ export async function synthesiseFollowUpAnswer(
   ].filter(Boolean).join("\n");
 
   const attempts = [
-    { label: "primary", model: SEARCH_EDITORIAL_MODEL, timeoutMs: 60_000 },
+    { label: "primary", model: SEARCH_FOLLOWUP_SYNTHESIS_MODEL, timeoutMs: 60_000 },
     { label: "backup", model: SEARCH_BACKUP_MODEL, timeoutMs: 90_000 },
   ] as const;
 
