@@ -83,7 +83,7 @@ export default function SearchSessionPage({ id }: { id: string }) {
 
   return (
     <DashboardLayout>
-      <div className="max-w-full lg:max-w-6xl mx-auto h-[calc(100vh-120px)] flex flex-col">
+      <div className="max-w-full md:max-w-6xl mx-auto h-[calc(100vh-120px)] flex flex-col">
         {/* Header */}
         <header className="flex items-center gap-3 mb-6 shrink-0">
           <div className="w-9 h-9 rounded-xl bg-onyx-outline/8 flex items-center justify-center shrink-0">

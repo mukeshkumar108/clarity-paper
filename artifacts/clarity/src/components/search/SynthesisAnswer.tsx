@@ -35,6 +35,7 @@ interface SynthesisAnswerProps {
   noEvidence: boolean;
   query: string;
   coverageNote?: "abstracts_only" | "partial_full_text" | "full_text";
+  label?: string;
 }
 
 export function SynthesisAnswer({
@@ -43,6 +44,7 @@ export function SynthesisAnswer({
   noEvidence,
   query,
   coverageNote = "abstracts_only",
+  label = "First read",
 }: SynthesisAnswerProps) {
   const config =
     CONFIDENCE_CONFIG[confidence] ?? CONFIDENCE_CONFIG["preliminary"];
@@ -53,7 +55,7 @@ export function SynthesisAnswer({
       {/* Section label — makes clear this is an orientation, not a verdict */}
       <div className="flex items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-stone/60">
-          First read
+          {label}
         </span>
       </div>
 

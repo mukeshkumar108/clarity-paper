@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-import type { SearchResult, SearchSessionMessage, RankedPaper } from "@/lib/search-types";
+import type { SearchResult, SearchSessionMessage, RankedPaper, EvidenceSpan } from "@/lib/search-types";
 import { SynthesisAnswer } from "./SynthesisAnswer";
 import { SynthesisSkeleton } from "./SynthesisSkeleton";
 import { CompactEvidence } from "./CompactEvidence";
 import { PaperCard } from "./PaperCard";
+import { EvidencePanel } from "./EvidencePanel";
 import { FollowUpOptions } from "./FollowUpOptions";
 import { MainRefineInput } from "./MainRefineInput";
 import { User, Bot, Sparkles, ScrollText } from "lucide-react";
@@ -133,13 +134,16 @@ function AssistantMessage({
   result,
   onFollowUp,
   isFirst = false,
+  overrideText,
 }: {
   result: SearchResult;
   onFollowUp: (query: string) => void;
   isFirst?: boolean;
+  overrideText?: string;
 }) {
   const [showEvidence, setShowEvidence] = useState(false);
   const recs = getRecommendedPapers(isFirst ? result.papers : []);
+  const text = overrideText ?? result.synthesisText;
 
   return (
     <div className="flex gap-3">
@@ -150,11 +154,12 @@ function AssistantMessage({
         {/* Main synthesis */}
         <div className="bg-white/60 border border-pebble-gray/70 rounded-2xl rounded-tl-sm px-4 py-3">
           <SynthesisAnswer
-            synthesisText={result.synthesisText}
+            synthesisText={text}
             confidence={result.confidence}
             noEvidence={result.noEvidence}
             query={result.query}
             coverageNote={result.coverageNote}
+            label={isFirst ? "First read" : "Response"}
           />
 
           {/* Evidence inline */}
@@ -222,25 +227,44 @@ function SimpleAssistantMessage({ content }: { content: string }) {
 function PapersSidebar({
   papers,
   messages,
-  isFirstLoad,
+  evidenceSpans,
 }: {
   papers: RankedPaper[];
   messages: SearchSessionMessage[];
-  isFirstLoad: boolean;
+  evidenceSpans: EvidenceSpan[];
 }) {
   const groups = computeTurnGroups(papers, messages);
   const recs = getRecommendedPapers(papers);
+  const [showEvidence, setShowEvidence] = useState(false);
 
   if (papers.length === 0) return null;
 
   return (
     <div className="space-y-5 sticky top-4">
+      {/* Evidence claims */}
+      {evidenceSpans.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowEvidence(!showEvidence)}
+            className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wider text-muted-stone hover:text-deep-shadow w-full text-left"
+          >
+            <span>Claims &amp; evidence</span>
+            <span className="text-muted-stone/50">({evidenceSpans.length})</span>
+          </button>
+          {showEvidence && (
+            <div className="mt-2">
+              <EvidencePanel spans={evidenceSpans} />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Recommended papers */}
       {recs.length > 0 && (
         <div>
           <div className="flex items-center gap-1.5 mb-2">
             <Sparkles className="w-3 h-3 text-onyx-outline" />
-            <span className="text-[12px] font-medium uppercase tracking-wider text-muted-stone">
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-stone">
               Start here
             </span>
           </div>
@@ -335,7 +359,7 @@ export function ChatCanvas({
   }, [messages, result.synthesisText]);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 max-w-5xl mx-auto">
+    <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-8 max-w-5xl mx-auto">
       {/* Left column: chat */}
       <div className="min-w-0 space-y-6">
         {/* First assistant message — the main synthesis */}
@@ -369,16 +393,18 @@ export function ChatCanvas({
                 return <UserMessage key={message.id} content={message.content} />;
               }
 
-              if (message.kind === "canvas_update") {
-                return (
-                  <AssistantMessage
-                    key={message.id}
-                    result={result}
-                    onFollowUp={onFollowUp}
-                    isFirst={false}
-                  />
-                );
-              }
+            if (message.kind === "canvas_update") {
+              // For canvas updates, show the follow-up answer from the message content
+              return (
+                <AssistantMessage 
+                  key={message.id}
+                  result={result}
+                  onFollowUp={onFollowUp}
+                  isFirst={false}
+                  overrideText={message.content}
+                />
+              );
+            }
 
               return (
                 <SimpleAssistantMessage key={message.id} content={message.content} />
@@ -402,11 +428,11 @@ export function ChatCanvas({
       </div>
 
       {/* Right column: persistent paper sidebar */}
-      <div className="hidden lg:block">
+      <div className="hidden md:block">
         <PapersSidebar
           papers={result.papers}
           messages={messages}
-          isFirstLoad={messages.length === 0}
+          evidenceSpans={result.evidenceSpans}
         />
       </div>
     </div>

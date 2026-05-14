@@ -328,11 +328,11 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
       const spanDiag = computeSpanDiagnostics(followUpEvidenceSpans);
       logger.debug({ totalClaims: spanDiag.totalClaims, claimsWithAnySupport: spanDiag.claimsWithAnySupport }, "Follow-up evidence span diagnostics (canvas_update)");
 
-      // Persist merged session with follow-up synthesis
+      // Persist merged session — keep original query/plan/synthesis; follow-up answer lives in message
       await overwriteSearchSession(id, {
         query: session.query,
         plan: session.plan,
-        synthesisText: synthesis.synthesisText,
+        synthesisText: session.synthesisText, // keep original first read
         confidence: synthesis.confidence,
         noEvidence: mergedPapers.length === 0,
         evidenceSnapshot: mergedSnapshot,
