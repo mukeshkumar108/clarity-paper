@@ -18,21 +18,26 @@ function deduplicateFollowUpOptions(options: string[]): string[] {
   return result;
 }
 
-// Search synthesis split into two models run in parallel:
-// - Editorial: synthesisText + followUpOptions (Flash full — needs voice + judgment)
+// Search synthesis split into three models run in parallel:
+// - Editorial: synthesisText (Flash full — needs voice + judgment)
+// - Follow-ups: followUpOptions (Flash Lite — creative framing, cheap)
 // - Mechanical: paperSummaries + confidence + noEvidence (Flash Lite — fast extraction)
-// Total latency = max(editorial, mechanical) ≈ same as single call but better output.
-// Use OPENROUTER_SEARCH_MODEL and OPENROUTER_SEARCH_LITE_MODEL to override.
+// Total latency = max(editorial, mechanical, followUps) ≈ same as single call but better output.
 const SEARCH_EDITORIAL_MODEL =
   process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash";
 const SEARCH_MECHANICAL_MODEL =
   process.env.OPENROUTER_SEARCH_LITE_MODEL ?? "google/gemini-2.5-flash-lite";
+const SEARCH_FOLLOWUP_MODEL =
+  process.env.OPENROUTER_SEARCH_FOLLOWUP_MODEL ?? "google/gemini-2.5-flash-lite";
 const SEARCH_BACKUP_MODEL =
   process.env.OPENROUTER_SEARCH_BACKUP_MODEL ?? "anthropic/claude-3.5-haiku";
 
 const synthesisOutputSchema = z.object({
   synthesisText: z.string(),
-  followUpOptions: z.array(z.string()).min(2).max(4),
+});
+
+const followUpSchema = z.object({
+  followUpOptions: z.array(z.string()).min(2).max(5),
 });
 
 const mechanicalOutputSchema = z.object({
@@ -46,7 +51,7 @@ const mechanicalOutputSchema = z.object({
   ),
 });
 
-export type SynthesisOutput = z.infer<typeof synthesisOutputSchema> & z.infer<typeof mechanicalOutputSchema>;
+export type SynthesisOutput = z.infer<typeof synthesisOutputSchema> & z.infer<typeof mechanicalOutputSchema> & z.infer<typeof followUpSchema>;
 
 const SYNTHESIS_SYSTEM_PROMPT = `You are Clarity. You help people understand what scientific evidence actually says — not what headlines claim, not what podcasts exaggerate, not what abstracts mechanically report.
 
@@ -85,7 +90,6 @@ The reader should finish thinking "I understand this better, and I'm curious to 
 
 Return strict JSON with:
 - synthesisText: your full answer (structure naturally, not rigidly, but make sure Known/Contested/Missing are clear to the reader)
-- followUpOptions: 3-4 genuinely curious next steps, not query headers
 
 After your answer, if there's a DIRECT paper with strong design (meta-analysis, systematic review, RCT), add one sentence: "If you want to go deeper, [Title] is the one I'd start with — [one sentence why]."`;
 
@@ -95,6 +99,19 @@ OUTPUT STRICT JSON ONLY with these fields:
 - confidence: "preliminary" (only animal/in-vitro or 1-2 small human studies) | "promising" (1-2 RCTs or several observational) | "moderate" (multiple RCTs or 1+ meta-analysis with consistency) | "strong" (multiple meta-analyses with consistent RCT evidence)
 - noEvidence: true if zero papers OR all papers are mechanistic/animal only OR no papers address the user's actual question
 - paperSummaries: for each paper, write a single vivid plain-English sentence about what this study actually found. Under 200 characters. Not the title. Note the population if relevant.`;
+
+const FOLLOW_UP_SYSTEM_PROMPT = `You generate genuinely useful follow-up questions for a scientific investigation. These should feel like natural curiosity, not database queries.
+
+Rules:
+- Each question should open a specific, useful direction — not a generic header
+- Questions should flow from gaps, contradictions, or practical angles in the evidence
+- Write as if a curious friend is asking: "I wonder about X" or "What about Y?"
+- Never: "long-term effects," "mechanism of action," "more research needed"
+- Always: specific populations, specific outcomes, specific comparisons, practical protocols
+
+For comparison queries, suggest questions about: direct head-to-head evidence, mechanism, specific populations, adherence/sustainability, how the comparison changes the evidence picture.
+
+Return strict JSON with: followUpOptions (array of strings).`;
 
 function formatPapersForSynthesis(papers: RankedPaper[]): string {
   return papers
@@ -164,6 +181,45 @@ async function attemptMechanicalExtraction(
   return mechanicalOutputSchema.parse(data);
 }
 
+function buildFollowUpContext(
+  plan: ResearchPlan,
+  snapshot: EvidenceSnapshot,
+  papers: RankedPaper[],
+  isFirstTurn: boolean,
+  previousSynthesis?: string,
+): string {
+  const maxOptions = isFirstTurn ? 5 : 3;
+  const lines = [
+    `USER QUESTION: ${plan.userQuestion}`,
+    plan.isComparison ? `Comparison target: ${plan.comparisonTarget}` : "",
+    previousSynthesis ? `Previous answer summary: ${previousSynthesis.slice(0, 300)}` : "",
+    "",
+    `Evidence landscape: ${snapshot.metaAnalyses} meta-analyses, ${snapshot.rcts} RCTs, ${snapshot.humanObservational} observational, ${snapshot.mechanistic} mechanistic, ${snapshot.conflicting} conflicting`,
+    "",
+    `Top papers (titles only):`,
+    ...papers.slice(0, 5).map((p) => `  - ${p.title}`),
+    "",
+    `Generate exactly ${maxOptions} follow-up questions. ${isFirstTurn ? "First turn — broader exploration." : "Follow-up turn — more specific, more focused. Zoom in."}`,
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+async function attemptFollowUpGeneration(
+  context: string,
+  model: string,
+  timeoutMs: number,
+): Promise<string[]> {
+  const raw = await callLLM(
+    FOLLOW_UP_SYSTEM_PROMPT,
+    context,
+    followUpSchema,
+    { model, temperature: 0.4, timeoutMs },
+  );
+  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  const parsed = followUpSchema.parse(data);
+  return deduplicateFollowUpOptions(parsed.followUpOptions);
+}
+
 export async function synthesisePapers(
   plan: ResearchPlan,
   papers: RankedPaper[],
@@ -218,27 +274,25 @@ export async function synthesisePapers(
     papersText,
   ].filter(Boolean).join("\n");
 
-  // Run editorial and mechanical calls in parallel
-  const [editorialResult, mechanicalResult] = await Promise.all([
+  // Run editorial, mechanical, and follow-up calls in parallel
+  const followUpContext = buildFollowUpContext(plan, snapshot, papers, true);
+  const [editorialResult, mechanicalResult, followUpOptions] = await Promise.all([
     (async (): Promise<z.infer<typeof synthesisOutputSchema>> => {
       try {
         const result = await attemptEditorialSynthesis(userMessage, SEARCH_EDITORIAL_MODEL, 60_000);
-        result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
         logger.info({ model: SEARCH_EDITORIAL_MODEL, query: plan.userQuestion }, "Editorial synthesis succeeded");
         return result;
       } catch (err) {
         logger.warn({ err, model: SEARCH_EDITORIAL_MODEL, query: plan.userQuestion }, "Editorial synthesis failed — trying backup");
         try {
           const result = await attemptEditorialSynthesis(userMessage, SEARCH_BACKUP_MODEL, 90_000);
-          result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
           logger.info({ model: SEARCH_BACKUP_MODEL, query: plan.userQuestion }, "Editorial backup synthesis succeeded");
           return result;
         } catch (backupErr) {
           logger.error({ err: backupErr, query: plan.userQuestion }, "Editorial synthesis failed after backup");
-          return {
-            synthesisText: "The paper list is still worth browsing directly. We found relevant research, but the Clarity readout did not land cleanly this time.",
-            followUpOptions: plan.followUpQuestions.slice(0, 4),
-          };
+            return {
+              synthesisText: "The paper list is still worth browsing directly. We found relevant research, but the Clarity readout did not land cleanly this time.",
+            };
         }
       }
     })(),
@@ -259,11 +313,22 @@ export async function synthesisePapers(
         };
       }
     })(),
+    (async (): Promise<string[]> => {
+      try {
+        const options = await attemptFollowUpGeneration(followUpContext, SEARCH_FOLLOWUP_MODEL, 10_000);
+        logger.info({ model: SEARCH_FOLLOWUP_MODEL, query: plan.userQuestion }, "Follow-up generation succeeded");
+        return options;
+      } catch (err) {
+        logger.warn({ err, model: SEARCH_FOLLOWUP_MODEL, query: plan.userQuestion }, "Follow-up generation failed — using planner fallback");
+        return plan.followUpQuestions.slice(0, 5);
+      }
+    })(),
   ]);
 
   return {
     ...editorialResult,
     ...mechanicalResult,
+    followUpOptions,
   };
 }
 
