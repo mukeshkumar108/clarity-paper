@@ -204,6 +204,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
     let retrievalPerformed = false;
     let papersBefore = session.papers.length;
     let papersAfter = papersBefore;
+    let newPapers: RankedPaper[] = [];
     
     // Step 3: Handle based on action type
     if (action.actionType === "clarification_prompt") {
@@ -247,7 +248,6 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
       assistantKind = "canvas_update";
       
       let papersForSynthesis: RankedPaper[] = session.papers;
-      let newPapers: RankedPaper[] = [];
       let mergedPapers: RankedPaper[] = session.papers;
       let mergedSnapshot: EvidenceSnapshot = session.evidenceSnapshot;
       
@@ -359,11 +359,13 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
           focusBadges: action.focusBadges,
           focusSummary: action.focusSummary,
           retrievalMode: action.retrievalMode ?? undefined,
-          // Include retrieval delta info
+          // Include retrieval delta info with paper IDs for frontend turn grouping
           retrievalDelta: retrievalPerformed ? {
             papersBefore,
             papersAfter,
             newPaperCount: papersAfter - papersBefore,
+            newPaperIds: newPapers.map(p => p.externalId),
+            newPaperTitles: newPapers.map(p => p.title.slice(0, 100)),
           } : undefined,
         },
       })

@@ -142,6 +142,13 @@ export interface SearchSessionMessage {
     focusBadges?: string[];
     focusSummary?: string;
     retrievalMode?: "reused_current_papers" | "focused_retrieval";
+    retrievalDelta?: {
+      papersBefore: number;
+      papersAfter: number;
+      newPaperCount: number;
+      newPaperIds: string[];
+      newPaperTitles: string[];
+    };
   };
   createdAt: string;
 }
