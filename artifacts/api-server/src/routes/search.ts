@@ -230,10 +230,14 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
         followUpQuestion: trimmed,
         userIntent: action.userIntent,
         existingPapers: session.papers,
-        newPapers: [], // No new papers
+        newPapers: [],
         previousSynthesis: session.synthesisText,
         evidenceSnapshot: session.evidenceSnapshot,
         plan: session.plan,
+        recentMessages: session.messages
+          .filter(m => m.kind !== "synthesis")
+          .slice(-4)
+          .map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
       });
 
       // P0: Grounding validation on follow-up synthesis
@@ -323,6 +327,10 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
         previousSynthesis: session.synthesisText,
         evidenceSnapshot: mergedSnapshot,
         plan: session.plan,
+        recentMessages: session.messages
+          .filter(m => m.kind !== "synthesis")
+          .slice(-4)
+          .map(m => ({ role: m.role as "user" | "assistant", content: m.content })),
       });
 
       // P0: Grounding validation on follow-up synthesis
