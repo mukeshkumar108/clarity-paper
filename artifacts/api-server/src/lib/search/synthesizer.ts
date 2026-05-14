@@ -18,17 +18,24 @@ function deduplicateFollowUpOptions(options: string[]): string[] {
   return result;
 }
 
-// Search synthesis requires editorial voice and interpretive judgment — Flash Lite
-// is too weak for this. Full Flash is fast enough (~15-20s) with far better prose.
-// Claude Haiku is the backup — slower but even better voice quality.
-// Use OPENROUTER_SEARCH_MODEL to override in production.
-const SEARCH_MODEL =
+// Search synthesis split into two models run in parallel:
+// - Editorial: synthesisText + followUpOptions (Flash full — needs voice + judgment)
+// - Mechanical: paperSummaries + confidence + noEvidence (Flash Lite — fast extraction)
+// Total latency = max(editorial, mechanical) ≈ same as single call but better output.
+// Use OPENROUTER_SEARCH_MODEL and OPENROUTER_SEARCH_LITE_MODEL to override.
+const SEARCH_EDITORIAL_MODEL =
   process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash";
+const SEARCH_MECHANICAL_MODEL =
+  process.env.OPENROUTER_SEARCH_LITE_MODEL ?? "google/gemini-2.5-flash-lite";
 const SEARCH_BACKUP_MODEL =
   process.env.OPENROUTER_SEARCH_BACKUP_MODEL ?? "anthropic/claude-3.5-haiku";
 
 const synthesisOutputSchema = z.object({
   synthesisText: z.string(),
+  followUpOptions: z.array(z.string()).min(2).max(4),
+});
+
+const mechanicalOutputSchema = z.object({
   confidence: z.enum(["preliminary", "promising", "moderate", "strong"]),
   noEvidence: z.boolean(),
   paperSummaries: z.array(
@@ -37,94 +44,57 @@ const synthesisOutputSchema = z.object({
       summary: z.string(),
     }),
   ),
-  followUpOptions: z.array(z.string()).min(2).max(4),
 });
 
-export type SynthesisOutput = z.infer<typeof synthesisOutputSchema>;
+export type SynthesisOutput = z.infer<typeof synthesisOutputSchema> & z.infer<typeof mechanicalOutputSchema>;
 
 const SYNTHESIS_SYSTEM_PROMPT = `You are Clarity. You help people understand what scientific evidence actually says — not what headlines claim, not what podcasts exaggerate, not what abstracts mechanically report.
 
 Your job is not to summarize papers. Your job is to help someone think about what the evidence MEANS.
 
-═══ WHAT YOU ARE ALLOWED TO DO ═══
+═══ CORE DIRECTIVES ═══
 
-Interpret. Connect findings across papers. Explain why a result matters. Use your knowledge of biology, study design, and how science works to frame what the evidence shows. Name what's surprising. Name what's disappointing. Name what's genuinely uncertain.
+1. VERDICT FIRST. Answer the user's messy question immediately. Don't set up. Don't hedge. The first sentence is the answer.
 
-Distinguish explicitly between:
-- What the evidence DIRECTLY shows (backed by strong-design papers on the exact question)
-- What it STRONGLY IMPLIES (consistent pattern across papers, but not proven)
-- What it MERELY SUGGESTS (mechanistic plausibility, animal data, small human signals)
-- What people WISH it showed (podcast claims, hype, overinterpretation)
+2. MAP THE EVIDENCE. Every answer should leave the reader knowing three things:
+   - KNOWN: What the evidence directly establishes (high-certainty from RCTs/meta-analyses)
+   - CONTESTED: Where papers disagree, and WHY (design, population, timing — not just "they disagree")
+   - MISSING: The critical piece we genuinely don't have yet
 
-Take positions: "the evidence points toward X" or "the evidence genuinely can't settle this." Don't hide behind "some studies found X while others found Y" without explaining WHY they differ.
+3. BRIDGE GAPS. When no direct evidence exists, triangulate from related research. Explicitly say: "No study has directly tested X, but here's what adjacent evidence suggests..." Then reason from mechanism when applicable, clearly labeled as "Mechanistically, this implies..."
 
-═══ WHAT YOU ARE NEVER ALLOWED TO DO ═══
+4. STEEL-MAN CLAIMS. If the user references a podcast, influencer, or "I heard that...": first state what the BEST evidence for that claim would be (the one study that supports it), then show what the FULL evidence set says. Don't dismiss — evaluate.
 
-- Invent findings, numbers, or study details not in the provided papers
-- Use causal language ("causes", "leads to", "produces", "proves") unless the evidence includes RCTs or meta-analyses. For observational evidence: "associated with", "linked to", "suggests", "may", "appears to"
-- Generalize findings beyond the population actually studied. If studies were in sleep-deprived adults, name that group — not "people"
-- Give medical advice or recommend specific treatments. Your job is evidence education, not prescription
+5. CALIBRATE, DON'T HEDGE. Say "the evidence is strong enough to act on" OR "the evidence genuinely can't settle this question." Never say "more research is needed" as your main takeaway. Never call evidence "thin" or "limited" when you have 3+ meta-analyses or systematic reviews — the evidence is strong by study design even if abstract-only.
 
-═══ HOW TO STRUCTURE YOUR ANSWER ═══
+═══ EPISTEMIC FRAMING ═══
 
-Don't follow a rigid template. Follow your understanding. But every good answer does these four things:
+Distinguish these levels in your thinking and, when it helps clarity, in your writing:
+- EVIDENCE (the floor): hard data points from the papers. "Study A (n=450) found X."
+- INFERENCE (the bridge): logical extensions. "Because of mechanism Y, this likely applies to group Z."
+- SPECULATION (the frontier): uncertain possibilities. "It is possible that timing matters, though no study has tested this."
+- HYPE (the claim): what people say that the evidence doesn't support.
 
-1. NAMES WHAT KIND OF QUESTION THIS IS.
-   Not "studies show…" but "this is a question where the evidence is [surprisingly strong / genuinely thin / split down the middle / mostly adjacent] — here's why."
-   Set the reader's expectations in the first sentence.
+═══ VOICE ═══
 
-2. TELLS THE STORY OF WHAT THE STUDIES ACTUALLY FOUND.
-   Not as a list of data points. As a narrative with a thread. Connect findings across papers. If papers disagree, explain what's actually different between them — study design, population, timing, measurement — not just that they disagree. Use specific numbers when they make the story clearer.
+Write like someone who understands science and ENJOYS explaining it. Not a lecturer. Not a peer reviewer. Not a chatbot.
 
-3. INTERPRETS WHAT THIS MEANS.
-   This is the most important part. After reporting findings, say what they MEAN. Is the evidence strong enough that someone should pay attention? Is there a pattern the individual papers don't state? What would a thoughtful researcher conclude after looking at this set of papers? This is where you earn trust — by making honest judgments, not just reporting data.
+The reader should finish thinking "I understand this better, and I'm curious to know more." Use plain English. Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore."
 
-4. ENDS WITH WHAT SOMEONE SHOULD ACTUALLY TAKE AWAY.
-   Practical, concrete, honest about edges. Not "consult a professional" (they know). Not "more research is needed" (always true). Something like: "If you're trying to decide whether X is worth doing, the evidence says Y — and here's the one thing that would change that picture."
+═══ OUTPUT ═══
 
-═══ ABOUT THE PAPERS YOU RECEIVE ═══
+Return strict JSON with:
+- synthesisText: your full answer (structure naturally, not rigidly, but make sure Known/Contested/Missing are clear to the reader)
+- followUpOptions: 3-4 genuinely curious next steps, not query headers
 
-Each paper is labeled with how well it fits the question:
-- DIRECT: this paper is directly on the question
-- ADJACENT: related but not a direct answer
-- WEAK: tangentially relevant
-- MISMATCH: probably not answering this question
+After your answer, if there's a DIRECT paper with strong design (meta-analysis, systematic review, RCT), add one sentence: "If you want to go deeper, [Title] is the one I'd start with — [one sentence why]."`;
 
-Use these labels. If most papers are ADJACENT rather than DIRECT, say so: "The evidence directly on your question is thin — most of what we have is adjacent research." This is honesty, not hedging.
+const MECHANICAL_SYSTEM_PROMPT = `You are a precise scientific extraction assistant. Your job is purely mechanical — extract structured metadata from a set of papers and their evidence landscape.
 
-═══ ABOUT ABSTRACT LIMITATIONS ═══
-
-You are working from paper abstracts. This only matters when:
-- The user asks about something the abstracts clearly don't reveal (exact protocols, subgroup effects, adverse event details)
-- A paper's abstract mentions a finding without the details needed to interpret it
-
-When it matters, be specific: "The abstract reports a +12% improvement but doesn't tell us the dose or how long the effect lasted." Don't append "the full paper might reveal more" to every sentence.
-
-═══ ABOUT YOUR VOICE ═══
-
-Write like someone who understands science and ENJOYS explaining it. Not a lecturer. Not a press release. Not a peer reviewer. Not a chatbot.
-
-The reader should finish thinking "I understand this better now, and I'm curious to know more" — not "I have been informed."
-
-Use plain English. Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore." Embrace: "here's the thing," "the interesting part is," "this is surprising because," "where it gets tricky is."
-
-═══ EVIDENCE LEVELS ═══
-
-Set noEvidence to true when: zero papers, all papers are mechanistic/animal only, or no papers meaningfully address the question. When true, say clearly there isn't yet strong human evidence, describe what early research suggests, and frame it as exploratory — not as "no evidence exists."
-
-Set confidence to one of:
-- preliminary: only animal/in-vitro, or 1-2 small human studies
-- promising: 1-2 RCTs or several consistent observational studies
-- moderate: multiple RCTs or 1+ meta-analysis with some consistency
-- strong: multiple meta-analyses with consistent human RCT evidence
-
-═══ PAPER SUMMARIES & FOLLOW-UPS ═══
-
-paperSummaries: For each paper, write a single vivid sentence about what this study actually found. Under 200 characters. Not the title. Write like you're telling a friend one interesting thing about this paper.
-
-followUpOptions: 3-4 questions a genuinely curious person would want to explore next. Not query headers. Not "long-term effects." Specific angles that follow naturally from gaps or tensions in the current evidence.
-
-Return strict JSON only matching the schema.`;
+OUTPUT STRICT JSON ONLY with these fields:
+- confidence: "preliminary" (only animal/in-vitro or 1-2 small human studies) | "promising" (1-2 RCTs or several observational) | "moderate" (multiple RCTs or 1+ meta-analysis with consistency) | "strong" (multiple meta-analyses with consistent RCT evidence)
+- noEvidence: true if zero papers OR all papers are mechanistic/animal only OR no papers address the user's actual question
+- paperSummaries: for each paper, write a single vivid plain-English sentence about what this study actually found. Under 200 characters. Not the title. Note the population if relevant.`;
 
 function formatPapersForSynthesis(papers: RankedPaper[]): string {
   return papers
@@ -164,20 +134,34 @@ function formatPapersForSynthesis(papers: RankedPaper[]): string {
     .join("\n\n");
 }
 
-async function attemptSynthesis(
+async function attemptEditorialSynthesis(
   userMessage: string,
   model: string,
   timeoutMs: number,
-): Promise<SynthesisOutput> {
+): Promise<z.infer<typeof synthesisOutputSchema>> {
   const raw = await callLLM(
     SYNTHESIS_SYSTEM_PROMPT,
     userMessage,
     synthesisOutputSchema,
     { model, temperature: 0.3, timeoutMs },
   );
-
   const data = typeof raw === "string" ? JSON.parse(raw) : raw;
   return synthesisOutputSchema.parse(data);
+}
+
+async function attemptMechanicalExtraction(
+  userMessage: string,
+  model: string,
+  timeoutMs: number,
+): Promise<z.infer<typeof mechanicalOutputSchema>> {
+  const raw = await callLLM(
+    MECHANICAL_SYSTEM_PROMPT,
+    userMessage,
+    mechanicalOutputSchema,
+    { model, temperature: 0.1, timeoutMs },
+  );
+  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return mechanicalOutputSchema.parse(data);
 }
 
 export async function synthesisePapers(
@@ -197,14 +181,11 @@ export async function synthesisePapers(
     `The user asked: "${plan.userQuestion}"`,
     `This is a ${plan.intentType.replace(/_/g, " ")} query.`,
     plan.isComparison
-      ? `\nCOMPARISON CONTEXT: The user is comparing two approaches. They want to know if one is better than the other. Comparison target: "${plan.comparisonTarget}".`
-      : `\nThis is NOT a comparison question — the user is asking about a single intervention or topic.`,
-    `\nKEY ANGLES THE USER CARES ABOUT: ${plan.entities.join(", ")}.`,
+      ? `\nCOMPARISON: The user wants to know if one approach is better than another. Comparison target: "${plan.comparisonTarget}". If direct comparison evidence exists, lead with it. If not, triangulate from single-intervention studies and clearly label the gap.`
+      : ``,
+    `\nKEY ANGLES: ${plan.entities.join(", ")}.`,
     plan.hiddenGoals?.length
-      ? `Deeper interests: ${plan.hiddenGoals.join(", ")}. Frame the answer toward these when evidence supports it.`
-      : "",
-    plan.desiredEvidenceTypes?.length
-      ? `The user wants ${plan.desiredEvidenceTypes.join(", ")} level evidence. Papers that aren't this level were soft-demoted in ranking.`
+      ? `Deeper interests: ${plan.hiddenGoals.join(", ")}. Frame toward these when evidence supports it.`
       : "",
     "",
     `EVIDENCE LANDSCAPE:`,
@@ -213,31 +194,23 @@ export async function synthesisePapers(
     `  Human observational: ${snapshot.humanObservational}`,
     `  Mechanistic / animal: ${snapshot.mechanistic}`,
     `  Conflicting findings: ${snapshot.conflicting}`,
-    `  Total papers in the set: ${papers.length}`,
+    `  Total papers: ${papers.length}`,
     "",
-    `INTERPRETATION INSTRUCTIONS:`,
-    `- If the evidence is mostly DIRECT papers: interpret with confidence. Take a position.`,
-    `- If the evidence is mostly ADJACENT: be honest that we're inferring from related research.`,
-    `- If the evidence is split between papers that find effects and papers that don't: explain WHY (design, population, timing) — don't just say "the evidence is mixed."`,
-    `- If the set has 3+ meta-analyses or systematic reviews: do NOT call the evidence "thin," "limited," or "insufficient." The evidence is strong by study design, even if abstract-only. Say what the evidence shows and name the gaps — don't dismiss the whole field.`,
-    `- If there are ZERO human studies: say so clearly. Frame mechanistic/animal evidence as exploratory.`,
-    `- AFTER your answer, if there is a paper marked DIRECT with high-quality design (meta-analysis, systematic review, or RCT), add one sentence recommending it: "If you want to go deeper, [Title] (the [study design]) is the one I'd start with — [one sentence explaining why]." Do NOT say "more research is needed" or "consult a professional."`,
-    plan.isComparison
-      ? `- COMPARISON INSTRUCTION: Distinguish head-to-head trials from single-intervention studies. If direct comparison evidence exists, lead with it. If no direct comparisons exist, say so explicitly. Do NOT present single-intervention evidence as if it answers the comparison.`
-      : "",
+    `INTERPRETATION FRAMEWORK:`,
+    `- If 3+ meta-analyses or systematic reviews: do NOT call evidence 'thin' or 'limited.' Evidence is strong by design.`,
+    `- If mostly DIRECT papers: take a position with confidence.`,
+    `- If mostly ADJACENT: be honest we're inferring from related research. Use mechanistic reasoning if applicable, labeled as inference.`,
+    `- If papers split between positive and null findings: explain WHY (design, population, timing).`,
+    `- If zero human studies: say so clearly.`,
+    `- Steel-man any podcast/hype claims: first present the best evidence FOR the claim, then show what the full set says.`,
     "",
     contradictions && contradictions.length > 0
       ? [
-          `CONTRADICTIONS DETECTED — papers disagree on the direction of effect:`,
+          `CONTRADICTIONS DETECTED:`,
           ...contradictions.map((c, i) =>
-            [
-              `  [${i + 1}] "${c.paperA.title}" → ${c.paperA.findingSummary}`,
-              `      vs "${c.paperB.title}" → ${c.paperB.findingSummary}`,
-              `      Likely reason: ${c.likelyReason}`,
-            ].join("\n"),
+            `  [${i + 1}] "${c.paperA.title}" → ${c.paperA.findingSummary}\n      vs "${c.paperB.title}" → ${c.paperB.findingSummary}\n      Likely reason: ${c.likelyReason}`,
           ),
-          "",
-          `You MUST surface these contradictions in your answer. Explain WHY the papers might disagree (${contradictions.map(c => c.likelyReason).join("; ")}). Don't just say "the evidence is mixed" — name the conflict directly.`,
+          `Surface these contradictions. Explain WHY they differ — don't just say "the evidence is mixed."`,
           "",
         ].join("\n")
       : "",
@@ -245,43 +218,52 @@ export async function synthesisePapers(
     papersText,
   ].filter(Boolean).join("\n");
 
-  const attempts = [
-    { label: "primary", model: SEARCH_MODEL, timeoutMs: 45_000 },
-    { label: "backup", model: SEARCH_BACKUP_MODEL, timeoutMs: 75_000 },
-  ] as const;
+  // Run editorial and mechanical calls in parallel
+  const [editorialResult, mechanicalResult] = await Promise.all([
+    (async (): Promise<z.infer<typeof synthesisOutputSchema>> => {
+      try {
+        const result = await attemptEditorialSynthesis(userMessage, SEARCH_EDITORIAL_MODEL, 60_000);
+        result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
+        logger.info({ model: SEARCH_EDITORIAL_MODEL, query: plan.userQuestion }, "Editorial synthesis succeeded");
+        return result;
+      } catch (err) {
+        logger.warn({ err, model: SEARCH_EDITORIAL_MODEL, query: plan.userQuestion }, "Editorial synthesis failed — trying backup");
+        try {
+          const result = await attemptEditorialSynthesis(userMessage, SEARCH_BACKUP_MODEL, 90_000);
+          result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
+          logger.info({ model: SEARCH_BACKUP_MODEL, query: plan.userQuestion }, "Editorial backup synthesis succeeded");
+          return result;
+        } catch (backupErr) {
+          logger.error({ err: backupErr, query: plan.userQuestion }, "Editorial synthesis failed after backup");
+          return {
+            synthesisText: "The paper list is still worth browsing directly. We found relevant research, but the Clarity readout did not land cleanly this time.",
+            followUpOptions: plan.followUpQuestions.slice(0, 4),
+          };
+        }
+      }
+    })(),
+    (async (): Promise<z.infer<typeof mechanicalOutputSchema>> => {
+      try {
+        const result = await attemptMechanicalExtraction(userMessage, SEARCH_MECHANICAL_MODEL, 15_000);
+        logger.info({ model: SEARCH_MECHANICAL_MODEL, query: plan.userQuestion }, "Mechanical extraction succeeded");
+        return result;
+      } catch (err) {
+        logger.warn({ err, model: SEARCH_MECHANICAL_MODEL, query: plan.userQuestion }, "Mechanical extraction failed — using fallback");
+        return {
+          confidence: snapshot.overallConfidence,
+          noEvidence: papers.length === 0,
+          paperSummaries: papers.map((p) => ({
+            externalId: p.externalId,
+            summary: p.plainSummary?.slice(0, 200) ?? "",
+          })),
+        };
+      }
+    })(),
+  ]);
 
-  let lastError: unknown = null;
-
-  for (const attempt of attempts) {
-    try {
-      const result = await attemptSynthesis(userMessage, attempt.model, attempt.timeoutMs);
-      // Deduplicate follow-up options (LLM sometimes produces near-duplicates)
-      result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
-      logger.info(
-        { model: attempt.model, attempt: attempt.label, query: plan.userQuestion },
-        "Search synthesis succeeded",
-      );
-      return result;
-    } catch (err) {
-      lastError = err;
-      logger.warn(
-        { err, model: attempt.model, attempt: attempt.label, query: plan.userQuestion },
-        "Search synthesis attempt failed",
-      );
-    }
-  }
-
-  logger.error({ err: lastError, query: plan.userQuestion }, "Search synthesis failed after retry and backup");
   return {
-    synthesisText:
-      "The paper list is still worth browsing directly. We found relevant research, but the quick Clarity readout did not land cleanly this time, so it's better to lean on the papers themselves than pretend we have a polished answer.",
-    confidence: snapshot.overallConfidence,
-    noEvidence: papers.length === 0,
-    paperSummaries: papers.map((paper) => ({
-      externalId: paper.externalId,
-      summary: paper.plainSummary.slice(0, 200),
-    })),
-    followUpOptions: plan.followUpQuestions.slice(0, 4),
+    ...editorialResult,
+    ...mechanicalResult,
   };
 }
 
@@ -440,7 +422,7 @@ export async function synthesiseFollowUpAnswer(
   ].filter(Boolean).join("\n");
 
   const attempts = [
-    { label: "primary", model: SEARCH_MODEL, timeoutMs: 60_000 },
+    { label: "primary", model: SEARCH_EDITORIAL_MODEL, timeoutMs: 60_000 },
     { label: "backup", model: SEARCH_BACKUP_MODEL, timeoutMs: 90_000 },
   ] as const;
 
