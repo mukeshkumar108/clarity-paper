@@ -59,7 +59,7 @@ Choose exactly one action:
 
 3. focused_retrieval_expansion — We need NEW papers to answer this properly. The user is asking about something the current set doesn't cover: a comparison, a specific outcome, a different population, a different intervention.
 
-4. clarification_prompt — The user's intent is genuinely unclear, or their query is too broad to narrow usefully. Ask ONE specific clarifying question that would unlock the investigation.
+4. clarification_prompt — ONLY when the query is genuinely unanswerable (e.g., "what's the weirdest science?" or a single word with no context). Use this SPARINGLY. If the query is ambiguous but has 2-3 plausible interpretations, do NOT clarify — instead, set actionType to "answer_current_results" or "focused_retrieval_expansion" and include all interpretations in the mainQuestion. The synthesizer will answer both tracks: "If you mean X, the evidence says Y. If you mean Z, the evidence says W."
 
 5. exhaustive_intent_transparency — The user asked for exhaustive coverage ("find all papers," "comprehensive search"). Be honest that this is a curated starting set, not a complete literature sweep.
 
@@ -69,7 +69,7 @@ Choose exactly one action:
 - "What about [specific outcome]?" → focused_retrieval_expansion if that outcome isn't well covered in current papers
 - "Why the contradiction?" / "What did this paper find?" → answer_current_results
 - "Show me only [study type / population]" → refine_current_canvas
-- Vague/broad → clarification_prompt (don't guess — ask)
+- Vague/unanswerable (no clear domain, no entities) → clarification_prompt
 - Personal context framing ("I'm tired all the time," "for someone my age") → treat as a change in exploration angle, possibly clarification if too broad
 
 ═══ IMPORTANT ═══

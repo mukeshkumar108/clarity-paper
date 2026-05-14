@@ -171,13 +171,33 @@ function isStudiesShowClaimGrounded(claim: string, papers: RankedPaper[]): boole
 
 // ─── Causal overreach detection ───────────────────────────────────────────────
 
+// Labeled inference phrases — exempt from causal language check because
+// they explicitly signal that the statement is inference, not fact.
+const LABELLED_INFERENCE_PREFIXES = [
+  /^mechanistically[\s,]/i,
+  /^from first principles[\s,]/i,
+  /^this does not directly prove/i,
+  /^this doesn't directly prove/i,
+  /^this does not directly show/i,
+  /^at a mechanistic level/i,
+  /^based on the mechanism/i,
+  /^theoretically[\s,]/i,
+  /^in theory[\s,]/i,
+];
+
 function hasCausalOverreach(synthesisText: string, snapshot: EvidenceSnapshot): boolean {
   const hasStrongDesigns = snapshot.rcts > 0 || snapshot.metaAnalyses > 0;
   if (hasStrongDesigns) return false;
 
+  // Split into sentences, filter out sentences with labelled inference
+  const sentences = synthesisText.split(/(?<=[.!?])\s+/);
+  const nonInferenceSentences = sentences.filter(
+    (s) => !LABELLED_INFERENCE_PREFIXES.some((p) => p.test(s.trim())),
+  ).join(" ");
+
   return CAUSAL_PHRASES.some((p) => {
     p.lastIndex = 0;
-    return p.test(synthesisText);
+    return p.test(nonInferenceSentences);
   });
 }
 

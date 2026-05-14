@@ -80,6 +80,21 @@ Distinguish these levels in your thinking and, when it helps clarity, in your wr
 - SPECULATION (the frontier): uncertain possibilities. "It is possible that timing matters, though no study has tested this."
 - HYPE (the claim): what people say that the evidence doesn't support.
 
+═══ HEURISTIC REASONING PERMISSION ═══
+
+You MAY use established biological, physiological, or methodological principles to interpret evidence. This is not fabrication — it is expert reasoning. You MUST label this reasoning explicitly:
+
+- "Mechanistically, [principle] suggests that..."
+- "From first principles, [principle] means that..."
+- "This does not directly prove X, but it makes Y plausible because..."
+
+You MUST NOT:
+- Invent study findings, doses, effect sizes, or sample characteristics
+- Claim a mechanism proves an effect without supporting evidence from the papers
+- Use heuristic reasoning to bypass the causal language constraint (still use "suggests"/"may" for observational evidence)
+
+This permission exists so you can BRIDGE GAPS in the evidence, not fill gaps with fiction. Label what is inference vs. what the papers directly show.
+
 ═══ VOICE ═══
 
 Write like someone who understands science and ENJOYS explaining it. Not a lecturer. Not a peer reviewer. Not a chatbot.
@@ -91,7 +106,9 @@ The reader should finish thinking "I understand this better, and I'm curious to 
 Return strict JSON with:
 - synthesisText: your full answer (structure naturally, not rigidly, but make sure Known/Contested/Missing are clear to the reader)
 
-After your answer, if there's a DIRECT paper with strong design (meta-analysis, systematic review, RCT), add one sentence: "If you want to go deeper, [Title] is the one I'd start with — [one sentence why]."`;
+After your answer, if there's a DIRECT paper with strong design (meta-analysis, systematic review, RCT), add one sentence: "If you want to go deeper, [Title] is the one I'd start with — [one sentence why]."
+
+NEVER end with: "Would you like to explore...", "Would you like me to...", "Let me know if you want...", "Would you like to dive deeper..." These are lazy chatbot defaults. Instead, end with ONE specific investigative next step that follows naturally from what you just explained: "The next thing I'd check is whether any trials separate meal timing from calorie deficit."`;
 
 const MECHANICAL_SYSTEM_PROMPT = `You are a precise scientific extraction assistant. Your job is purely mechanical — extract structured metadata from a set of papers and their evidence landscape.
 
@@ -117,7 +134,7 @@ function formatPapersForSynthesis(papers: RankedPaper[]): string {
   return papers
     .slice(0, 10)
     .map((p, i) => {
-      const abstract = p.abstract.slice(0, 600);
+      const abstract = p.abstract.slice(0, 1200);
       const authors =
         p.authors.length > 0
           ? p.authors.slice(0, 3).join(", ") + (p.authors.length > 3 ? " et al." : "")
@@ -145,7 +162,7 @@ function formatPapersForSynthesis(papers: RankedPaper[]): string {
         `  Design: ${designContext} | Population: ${popContext}`,
         `  Fit: ${fitContext}`,
         p.evidenceFit?.isHeadToHead ? `  ⚠ This is a HEAD-TO-HEAD comparison paper — directly compares interventions` : "",
-        `  Abstract: ${abstract}${p.abstract.length > 600 ? "..." : ""}`,
+        `  Abstract: ${abstract}${p.abstract.length > 1200 ? "..." : ""}`,
       ].filter(Boolean).join("\n");
     })
     .join("\n\n");
@@ -160,7 +177,7 @@ async function attemptEditorialSynthesis(
     SYNTHESIS_SYSTEM_PROMPT,
     userMessage,
     synthesisOutputSchema,
-    { model, temperature: 0.3, timeoutMs },
+    { model, temperature: 0.45, timeoutMs },
   );
   const data = typeof raw === "string" ? JSON.parse(raw) : raw;
   return synthesisOutputSchema.parse(data);
@@ -213,7 +230,7 @@ async function attemptFollowUpGeneration(
     FOLLOW_UP_SYSTEM_PROMPT,
     context,
     followUpSchema,
-    { model, temperature: 0.4, timeoutMs },
+    { model, temperature: 0.45, timeoutMs },
   );
   const data = typeof raw === "string" ? JSON.parse(raw) : raw;
   const parsed = followUpSchema.parse(data);
@@ -242,6 +259,19 @@ export async function synthesisePapers(
     `\nKEY ANGLES: ${plan.entities.join(", ")}.`,
     plan.hiddenGoals?.length
       ? `Deeper interests: ${plan.hiddenGoals.join(", ")}. Frame toward these when evidence supports it.`
+      : "",
+    "",
+    `ENTITY / OUTCOME SPOTLIGHT:`,
+    `  The user specifically asked about: ${plan.entities.join(", ")}.`,
+    plan.hiddenGoals?.length
+      ? `  They are also interested in: ${plan.hiddenGoals.join(", ")}.`
+      : "",
+    `  Your answer MUST address these terms directly. Do NOT substitute broader topics (e.g., do not talk about "metabolic health" when the user asked about "insulin"). If you substitute a related term, explain WHY: "The papers use HOMA-IR to measure insulin resistance, which is the closest proxy for what you asked about."`,
+    plan.isComparison
+      ? `  This is a comparison against: ${plan.comparisonTarget}. Your answer must explicitly compare to this, not just describe one intervention.`
+      : "",
+    plan.desiredEvidenceTypes?.length
+      ? `  The user prefers: ${plan.desiredEvidenceTypes.join(", ")}.`
       : "",
     "",
     `EVIDENCE LANDSCAPE:`,
@@ -276,6 +306,12 @@ export async function synthesisePapers(
 
   // Run editorial, mechanical, and follow-up calls in parallel
   const followUpContext = buildFollowUpContext(plan, snapshot, papers, true);
+
+  // Debug log: full synthesis context (only in non-production)
+  if (process.env.NODE_ENV !== "production" || process.env.CLARITY_DEBUG_SYNTHESIS) {
+    logger.debug({ userMessage: userMessage.slice(0, 5000), followUpContext: followUpContext.slice(0, 2000), query: plan.userQuestion }, "Synthesis user message (debug)");
+  }
+
   const [editorialResult, mechanicalResult, followUpOptions] = await Promise.all([
     (async (): Promise<z.infer<typeof synthesisOutputSchema>> => {
       try {
@@ -411,7 +447,7 @@ function formatPapersForFollowUp(papers: RankedPaper[], label: string): string {
   return papers
     .slice(0, 8)
     .map((p, i) => {
-      const abstract = p.abstract.slice(0, 500);
+      const abstract = p.abstract.slice(0, 1000);
       const authors = p.authors.length > 0
         ? p.authors.slice(0, 3).join(", ") + (p.authors.length > 3 ? " et al." : "")
         : "Unknown authors";
@@ -426,7 +462,7 @@ function formatPapersForFollowUp(papers: RankedPaper[], label: string): string {
         `${label} #${i + 1}: ${p.title}`,
         `  ${authors} (${p.year ?? "?"}) | ${designLabel} | ${p.populationType}`,
         `  Fit: ${fitLabel}${p.evidenceFit?.isHeadToHead ? " (head-to-head comparison)" : ""}`,
-        `  ${abstract}${p.abstract.length > 500 ? "..." : ""}`,
+        `  ${abstract}${p.abstract.length > 1000 ? "..." : ""}`,
       ].join("\n");
     })
     .join("\n\n");
@@ -499,7 +535,7 @@ export async function synthesiseFollowUpAnswer(
         FOLLOW_UP_SYNTHESIS_PROMPT,
         userMessage,
         followUpOutputSchema,
-        { model: attempt.model, temperature: 0.3, timeoutMs: attempt.timeoutMs },
+        { model: attempt.model, temperature: 0.45, timeoutMs: attempt.timeoutMs },
       );
 
       const data = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -519,7 +555,7 @@ export async function synthesiseFollowUpAnswer(
           FOLLOW_UP_SYNTHESIS_PROMPT,
           retryMessage,
           followUpOutputSchema,
-          { model: attempts[0].model, temperature: 0.3, timeoutMs: 60_000 },
+          { model: attempts[0].model, temperature: 0.45, timeoutMs: 60_000 },
         );
         const retryData = typeof retryRaw === "string" ? JSON.parse(retryRaw) : retryRaw;
         const retryResult = followUpOutputSchema.parse(retryData);
