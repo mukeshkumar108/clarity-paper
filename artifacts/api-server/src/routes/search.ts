@@ -233,6 +233,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
         newPapers: [], // No new papers
         previousSynthesis: session.synthesisText,
         evidenceSnapshot: session.evidenceSnapshot,
+        plan: session.plan,
       });
 
       // P0: Grounding validation on follow-up synthesis
@@ -321,6 +322,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
         newPapers: newPapers,
         previousSynthesis: session.synthesisText,
         evidenceSnapshot: mergedSnapshot,
+        plan: session.plan,
       });
 
       // P0: Grounding validation on follow-up synthesis

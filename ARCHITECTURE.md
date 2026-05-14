@@ -37,7 +37,8 @@ User query
 |------|--------------|-----------------|-----------|
 | Research planner | `google/gemini-2.5-flash-lite` | `OPENROUTER_PLANNER_MODEL` | Pure JSON output; speed matters, prose quality doesn't |
 | Query repair | `google/gemini-2.5-flash-lite` | `OPENROUTER_REPAIR_MODEL` | Same — generates revised query strings |
-| Synthesis | `google/gemini-2.5-flash-lite` | `OPENROUTER_SEARCH_MODEL` | 3-4 sentences + JSON; Flash Lite sufficient |
+| Search synthesis | `google/gemini-2.5-flash` | `OPENROUTER_SEARCH_MODEL` | Character-based editorial voice; needs full Flash for judgment |
+| Sidebar orchestrator | `google/gemini-2.5-flash` | `OPENROUTER_ORCHESTRATOR_MODEL` | Routing decisions (answer vs clarify) are critical; upgraded from Flash Lite |
 | Reranker | `cohere/rerank-4-fast` | `OPENROUTER_RERANK_MODEL` | Semantic relevance scoring; set to `"disabled"` to skip |
 | Doc analysis Pass 1 | `google/gemini-2.5-flash` | `OPENROUTER_STRUCTURED_MODEL` | Complex JSON extraction from full papers; needs full Flash |
 | Doc analysis Pass 2 | `google/gemini-2.5-flash` | `OPENROUTER_EDITORIAL_MODEL` | User-facing prose; plain english summary |
@@ -278,9 +279,10 @@ This keeps the product paper-first while giving the session a real sense of cont
 
 ### Sidebar Guardrails
 
-The orchestration layer now has a few explicit behavioral guardrails on top of the model output:
+The orchestration layer has explicit behavioral guardrails on top of the model output:
 
-- personal-context refinements like `I'm just tired all the time` are treated as a change in exploration angle, not as a generic current-results question
+- personal-context refinements like `I'm just tired all the time` are routed to `answer_current_results` — the synthesizer answers with a multi-track response instead of stalling with clarification
+- `clarification_prompt` is reserved for genuinely unparseable queries (no domain, no entities, no direction). If a query has even one plausible interpretation, the system answers rather than asking for clarification
 - clarification replies must actually clarify; they must not claim that the canvas was already filtered or updated
 - current-results answers are conservative when the abstract set does not support a strong read on duration, protocol, dosage, subgroup effects, or harms
 - explicit exhaustive-intent phrases are intercepted and answered with transparency instead of fake breadth

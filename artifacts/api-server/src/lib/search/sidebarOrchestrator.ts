@@ -3,7 +3,7 @@ import { callLLM } from "../openRouterProvider";
 import type { SearchSessionDetail, RankedPaper } from "./types";
 
 const ORCHESTRATOR_MODEL =
-  process.env.OPENROUTER_PLANNER_MODEL ?? "google/gemini-2.5-flash-lite";
+  process.env.OPENROUTER_ORCHESTRATOR_MODEL ?? process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash";
 
 const sidebarActionSchema = z.object({
   actionType: z.enum([
@@ -59,7 +59,7 @@ Choose exactly one action:
 
 3. focused_retrieval_expansion — We need NEW papers to answer this properly. The user is asking about something the current set doesn't cover: a comparison, a specific outcome, a different population, a different intervention.
 
-4. clarification_prompt — ONLY when the query is genuinely unanswerable (e.g., "what's the weirdest science?" or a single word with no context). Use this SPARINGLY. If the query is ambiguous but has 2-3 plausible interpretations, do NOT clarify — instead, set actionType to "answer_current_results" or "focused_retrieval_expansion" and include all interpretations in the mainQuestion. The synthesizer will answer both tracks: "If you mean X, the evidence says Y. If you mean Z, the evidence says W."
+4. clarification_prompt — ONLY when the query is genuinely unanswerable because it has NO detectable domain, NO entities, and NO clear direction. Examples: "what's the weirdest science?" or random single words with no context. Use this EXTREMELY SPARINGLY. If the query has even ONE plausible interpretation, do NOT clarify — instead route to answer_current_results or focused_retrieval_expansion and let the synthesizer handle it. If the query is ambiguous between 2-3 interpretations, route to answer_current_results with ALL interpretations in the mainQuestion. The synthesizer will answer all tracks: "If you mean X, the evidence says Y. If you mean Z, the evidence says W."
 
 5. exhaustive_intent_transparency — The user asked for exhaustive coverage ("find all papers," "comprehensive search"). Be honest that this is a curated starting set, not a complete literature sweep.
 
@@ -69,8 +69,8 @@ Choose exactly one action:
 - "What about [specific outcome]?" → focused_retrieval_expansion if that outcome isn't well covered in current papers
 - "Why the contradiction?" / "What did this paper find?" → answer_current_results
 - "Show me only [study type / population]" → refine_current_canvas
-- Vague/unanswerable (no clear domain, no entities) → clarification_prompt
-- Personal context framing ("I'm tired all the time," "for someone my age") → treat as a change in exploration angle, possibly clarification if too broad
+- Personal context framing ("I'm tired all the time," "for someone my age," "I'm just looking for X") → treat as a change in exploration angle that DESERVES AN ANSWER, not a clarification request. Route to answer_current_results or focused_retrieval_expansion. The synthesizer will address the personal angle directly.
+- Vague/unanswerable (no clear domain, no entities, no direction at all) → clarification_prompt — but this should be RARE
 
 ═══ IMPORTANT ═══
 
@@ -161,7 +161,11 @@ function buildPersonalContextClarification(userInput: string): string {
 
 function buildClarificationReply(session: SearchSessionDetail, userInput: string): string {
   if (looksLikePersonalContextRefinement(userInput)) {
-    return buildPersonalContextClarification(userInput);
+    // This path should now be rare — personal context queries are routed to
+    // answer_current_results in normalizeAction. But if a personal-context
+    // query still reaches clarification (e.g. genuinely too broad), give a
+    // response that still offers a starting direction rather than pure stalling.
+    return `That touches on something real in this evidence. Let me give you the best read I can from what we have, and you can tell me if you want to go deeper in any direction.`;
   }
 
   const normalized = normalizeText(userInput);
@@ -169,7 +173,7 @@ function buildClarificationReply(session: SearchSessionDetail, userInput: string
     return "Depression interventions is still broad. Are you more interested in therapy approaches, sleep or exercise, treatment-resistant depression, or medication comparisons?";
   }
 
-  return "I need one more detail before narrowing this cleanly. Which direction matters most here?";
+  return "I need one more detail to narrow this properly. Which direction matters most?";
 }
 
 function buildExhaustiveTransparencyReply(): string {
@@ -264,19 +268,22 @@ function normalizeAction(
     };
   }
 
+  // Personal-context queries ("I'm tired all the time") should be ANSWERED,
+  // not stalled with clarification. Route to answer_current_results so the
+  // synthesizer can provide a multi-track response addressing the user's
+  // specific angle. Only clarify if the query is genuinely unparseable.
   if (
-    action.actionType === "answer_current_results" &&
+    action.actionType === "clarification_prompt" &&
     looksLikePersonalContextRefinement(userInput)
   ) {
     return {
       ...action,
-      actionType: "clarification_prompt",
-      assistantReply: buildClarificationReply(session, userInput),
-      refinedQuery: null,
+      actionType: "answer_current_results",
+      assistantReply: undefined,
       reuseCurrentPapers: false,
       retrievalMode: null,
-      focusSummary: session.focusState.summary,
-      focusBadges: session.focusState.badges,
+      focusSummary: action.focusSummary || session.focusState.summary,
+      focusBadges: action.focusBadges || session.focusState.badges,
     };
   }
 

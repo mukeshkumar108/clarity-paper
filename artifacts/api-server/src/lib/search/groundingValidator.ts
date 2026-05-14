@@ -139,13 +139,17 @@ function buildUnitVariants(unit: string): string[] {
 // ─── "Studies show" violation detection ──────────────────────────────────────
 
 function extractStudiesShowClaims(text: string): string[] {
+  // First, strip sentences that are labelled inferences — they are
+  // explicitly permitted reasoning, not claims about retrieved papers.
+  const nonInferenceText = filterLabelledInference(text);
+
   const claims: string[] = [];
   for (const pattern of STUDIES_SHOW_PATTERNS) {
     pattern.lastIndex = 0;
-    for (const m of text.matchAll(pattern)) {
+    for (const m of nonInferenceText.matchAll(pattern)) {
       const start = m.index!;
-      const end = Math.min(text.length, start + 150);
-      claims.push(text.slice(start, end).replace(/\s+/g, " ").trim());
+      const end = Math.min(nonInferenceText.length, start + 150);
+      claims.push(nonInferenceText.slice(start, end).replace(/\s+/g, " ").trim());
     }
   }
   return [...new Set(claims)];
@@ -185,29 +189,40 @@ const LABELLED_INFERENCE_PREFIXES = [
   /^in theory[\s,]/i,
 ];
 
+// Split text into sentences, filtering out labeled-inference sentences
+// that explicitly signal reasoning rather than factual claims.
+// Used by causal overreach, "studies show", and model-prior checks.
+function filterLabelledInference(text: string): string {
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  return sentences.filter(
+    (s) => !LABELLED_INFERENCE_PREFIXES.some((p) => p.test(s.trim())),
+  ).join(" ");
+}
+
 function hasCausalOverreach(synthesisText: string, snapshot: EvidenceSnapshot): boolean {
   const hasStrongDesigns = snapshot.rcts > 0 || snapshot.metaAnalyses > 0;
   if (hasStrongDesigns) return false;
 
-  // Split into sentences, filter out sentences with labelled inference
-  const sentences = synthesisText.split(/(?<=[.!?])\s+/);
-  const nonInferenceSentences = sentences.filter(
-    (s) => !LABELLED_INFERENCE_PREFIXES.some((p) => p.test(s.trim())),
-  ).join(" ");
+  const nonInferenceText = filterLabelledInference(synthesisText);
 
   return CAUSAL_PHRASES.some((p) => {
     p.lastIndex = 0;
-    return p.test(nonInferenceSentences);
+    return p.test(nonInferenceText);
   });
 }
 
 // ─── Model-prior leakage detection ───────────────────────────────────────────
 
 function detectModelPriorLeakage(synthesisText: string): number {
+  // Model-prior leakage should only be flagged in sentences that are NOT
+  // labelled as inference. Sentences starting with "Mechanistically..." or
+  // "From first principles..." are explicitly permitted reasoning.
+  const nonInferenceText = filterLabelledInference(synthesisText);
+
   let count = 0;
   for (const pattern of MODEL_PRIOR_PHRASES) {
     pattern.lastIndex = 0;
-    const matches = [...synthesisText.matchAll(pattern)];
+    const matches = [...nonInferenceText.matchAll(pattern)];
     count += matches.length;
   }
   return count;

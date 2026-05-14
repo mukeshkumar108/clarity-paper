@@ -150,11 +150,51 @@ For comparison queries, suggest questions about: direct head-to-head evidence, m
 
 Return strict JSON with: followUpOptions (array of strings).`;
 
-function formatPapersForSynthesis(papers: RankedPaper[]): string {
+function extractRelevantAbstractText(
+  abstract: string,
+  entities: string[],
+  maxLength: number,
+): string {
+  if (abstract.length <= maxLength) return abstract;
+
+  const sentences = abstract.split(/(?<=[.!?])\s+/);
+  const entityLower = entities.map((e) => e.toLowerCase());
+
+  const scored = sentences.map((s, i) => {
+    const sLower = s.toLowerCase();
+    let score = 0;
+    if (i === 0) score += 2;
+    for (const e of entityLower) {
+      if (sLower.includes(e)) score += 3;
+      const tokens = e.split(/\s+/);
+      for (const t of tokens) {
+        if (t.length > 3 && sLower.includes(t)) score += 1;
+      }
+    }
+    return { sentence: s, score, index: i };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const selected = new Set<number>();
+  let totalLen = 0;
+  for (const { sentence, index } of scored) {
+    if (totalLen + sentence.length + 1 > maxLength) break;
+    selected.add(index);
+    totalLen += sentence.length + 1;
+  }
+
+  const result = sentences
+    .filter((_, i) => selected.has(i))
+    .join(" ");
+  return result.length > maxLength ? result.slice(0, maxLength) : result;
+}
+
+function formatPapersForSynthesis(papers: RankedPaper[], entities: string[] = []): string {
   return papers
     .slice(0, 10)
     .map((p, i) => {
-      const abstract = p.abstract.slice(0, 1200);
+      const abstract = extractRelevantAbstractText(p.abstract, entities, 1200);
       const authors =
         p.authors.length > 0
           ? p.authors.slice(0, 3).join(", ") + (p.authors.length > 3 ? " et al." : "")
@@ -265,7 +305,7 @@ export async function synthesisePapers(
 ): Promise<SynthesisOutput> {
   const papersText =
     papers.length > 0
-      ? formatPapersForSynthesis(papers)
+      ? formatPapersForSynthesis(papers, [...plan.entities, ...(plan.hiddenGoals ?? [])])
       : "No papers were retrieved.";
 
   const userMessage = [
@@ -277,7 +317,8 @@ export async function synthesisePapers(
       ? `\nCOMPARISON: The user wants to know if one approach is better than another. Comparison target: "${plan.comparisonTarget}". If direct comparison evidence exists, lead with it. If not, triangulate from single-intervention studies and clearly label the gap.`
       : ``,
     plan.isPracticalQuery
-      ? `\nPRACTICAL MODE: The user is not asking for an evidence summary. They want to know what to do or think. Lead with what you'd actually tell them — a clear recommendation or honest position — then support it with the evidence. Don't lead with what studies found; lead with what that means for a real person making a real decision. If the evidence supports acting, say so plainly. If it doesn't, say that plainly too. If the effect is real but modest, give them the context to weigh it themselves.`
+      ? `\nPRACTICAL MODE — THIS IS A DECISION QUESTION, NOT A LITERATURE QUESTION:
+The user wants to know what to do. Start with your honest position: "Yes, this is worth taking seriously" or "The honest answer is that the evidence doesn't yet support doing X for Y." Then explain why. Frame everything in terms of what a real person should take away. If the evidence supports acting, say so. If it doesn't, say that. If the effect is real but modest, say exactly how modest and let them decide. Never bury the answer in study descriptions.`
       : ``,
     `\nKEY ANGLES: ${plan.entities.join(", ")}.`,
     plan.hiddenGoals?.length
@@ -434,15 +475,16 @@ interface FollowUpSynthesisParams {
   newPapers: RankedPaper[];
   previousSynthesis: string;
   evidenceSnapshot: EvidenceSnapshot;
+  plan: ResearchPlan;
 }
 
-function formatPapersForFollowUp(papers: RankedPaper[], label: string): string {
+function formatPapersForFollowUp(papers: RankedPaper[], label: string, entities: string[] = []): string {
   if (papers.length === 0) return `${label}: None`;
   
   return papers
     .slice(0, 8)
     .map((p, i) => {
-      const abstract = p.abstract.slice(0, 1000);
+      const abstract = extractRelevantAbstractText(p.abstract, entities, 1000);
       const authors = p.authors.length > 0
         ? p.authors.slice(0, 3).join(", ") + (p.authors.length > 3 ? " et al." : "")
         : "Unknown authors";
@@ -474,6 +516,7 @@ export async function synthesiseFollowUpAnswer(
     newPapers,
     previousSynthesis,
     evidenceSnapshot,
+    plan,
   } = params;
 
   const hasNewPapers = newPapers.length > 0;
@@ -498,23 +541,34 @@ export async function synthesiseFollowUpAnswer(
     `Previous understanding: ${previousSynthesis.slice(0, 800)}`,
     "",
     ...deduplicationBlock,
-    `CURRENT QUESTION: ${followUpQuestion}`,
+    `═══ THIS IS WHAT THE USER IS ASKING ABOUT NOW ═══`,
+    `"${followUpQuestion}"`,
     `User's real intent: ${userIntent.mainQuestion}`,
     userIntent.comparisonTarget ? `Comparison target: ${userIntent.comparisonTarget}` : "",
-    userIntent.specificOutcome ? `Specific outcome of interest: ${userIntent.specificOutcome}` : "",
+    userIntent.specificOutcome ? `Specific outcome: ${userIntent.specificOutcome}` : "",
+    "",
+    `ENTITY / OUTCOME SPOTLIGHT:`,
+    `  The user specifically asked about: ${plan.entities.join(", ")}.`,
+    plan.hiddenGoals?.length
+      ? `  They are also interested in: ${plan.hiddenGoals.join(", ")}.`
+      : "",
+    `  Your answer MUST address these terms directly. Do NOT substitute broader topics. If you substitute a related term, explain WHY.`,
+    plan.isComparison
+      ? `  This is a comparison against: ${plan.comparisonTarget}. Address the comparison explicitly.`
+      : "",
     "",
     `EVIDENCE STATUS: ${hasNewPapers ? `Retrieved ${newPapers.length} new papers` : "Using existing evidence — going deeper, not broader"}`,
     hasNewPapers
       ? `\n⚠ CRITICAL: You MUST fill whatChanged. Describe specifically what the new papers add. Name the papers. Name the findings. Explain how the picture shifted. Do not write generic phrases like "the evidence is clearer" — be concrete.\n`
-      : `\nNo new papers were retrieved. Your job is to INTERPRET the existing evidence more carefully. Zoom in. Go deeper than the initial synthesis did on this specific angle.\n`,
+      : `\nNo new papers were retrieved. Your job is to INTERPRET the existing evidence more carefully. Zoom in on the specific angle the user asked about — go deeper than the initial synthesis did.\n`,
     "",
     `EVIDENCE SNAPSHOT: ${evidenceSnapshot.metaAnalyses} meta/SR, ${evidenceSnapshot.rcts} RCTs, ${allPapers.length} total papers`,
     "",
     `EXISTING PAPERS — what we already had:`,
-    formatPapersForFollowUp(existingPapers, "EXISTING"),
+    formatPapersForFollowUp(existingPapers, "EXISTING", [...plan.entities, ...(plan.hiddenGoals ?? [])]),
     "",
     `NEW PAPERS — what was just retrieved:`,
-    formatPapersForFollowUp(newPapers, "NEW"),
+    formatPapersForFollowUp(newPapers, "NEW", [...plan.entities, ...(plan.hiddenGoals ?? [])]),
   ].filter(Boolean).join("\n");
 
   const attempts = [

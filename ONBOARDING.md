@@ -136,6 +136,7 @@ User types "is intermittent fasting better than calorie restriction?"
 | Editorial synthesis | Gemini 2.5 Flash | `OPENROUTER_SEARCH_MODEL` |
 | Mechanical extraction | Gemini 2.5 Flash Lite | `OPENROUTER_SEARCH_LITE_MODEL` |
 | Follow-up generation | Gemini 2.5 Flash Lite | `OPENROUTER_SEARCH_FOLLOWUP_MODEL` |
+| Sidebar orchestrator | Gemini 2.5 Flash | `OPENROUTER_ORCHESTRATOR_MODEL` |
 | Editorial backup | Claude 3.5 Haiku | `OPENROUTER_SEARCH_BACKUP_MODEL` |
 | Reranker | Cohere Rerank 4 Fast | `OPENROUTER_RERANK_MODEL` |
 | Topical veto | Llama 3.1 8B | `OPENROUTER_TOPIC_FILTER_MODEL` |
@@ -197,7 +198,8 @@ User clicks follow-up chip or types question
       - focused_retrieval_expansion → rerunSearchIntoExistingSession
           → MERGE new papers into session (dedup by externalId)
           → synthesiseFollowUpAnswer (existing + new papers)
-      - clarification_prompt → direct reply
+      - clarification_prompt → direct reply (RARELY used — only for genuinely unparseable queries)
+      - exhaustive_intent_transparency → curated-scope transparency reply
   → Saves assistant message with metadata:
       - retrievalDelta: { newPaperIds, newPaperTitles, papersBefore/After }
       - evidenceSpans: follow-up claim→snippet provenance
@@ -243,12 +245,29 @@ paper_cache:
 
 5. **prac-04 type queries ("improve my focus at work")** — broad goal-framing queries often return preliminary evidence. The synthesis correctly reports weak evidence, but verdictDirectness suffers. Retrieval repair helps marginally. This is a retrieval problem, not a synthesis problem.
 
-**Fixed (2026-05-14):**
+**Fixed (2026-05-14 / 2026-05-15):**
 - Synthesis voice hedgy/flat — addressed by character-based identity rewrite, ANSWER THEN EXPLAIN directive, behavioral exemplar, forbidden phrase list
 - "More research needed" endings — FORBIDDEN ENDINGS section now explicitly bans these patterns
 - Comparison queries opening with hedge — COMPARISON QUERY RULE added (lead with best proxy finding, not "we don't have head-to-head data")
 - Practical mode not detected — planner now emits `isPracticalQuery`; synthesis adds PRACTICAL MODE framing block when true
 - "Thin evidence" when 3+ meta-analyses exist — now explicitly forbidden in calibration rules
+- **Personal-context clarification stall** — "I'm tired all the time" no longer triggers clarification; routed to answer_current_results for multi-track response
+- **Orchestrator model upgraded** from Flash Lite to Flash (routing is too important for cheapest model)
+- **Entity spotlight in follow-ups** — follow-up synthesis now receives the same entity/outcome spotlight as initial synthesis
+- **Intent-weighted abstract extraction** — model now sees sentences containing planner entities instead of just the first N chars
+- **Labeled-inference grounding exemption** — synthesizer says "Mechanistically, this implies..." without triggering grounded-model-prior or causal-overreach flags
+- **Practical mode strengthened** — explicit DECISION QUESTION directive instead of weak addendum
+
+**Still to investigate:**
+1. **Follow-up answers sometimes replace the page** — the session's `synthesisText` is preserved (not overwritten) but `result.synthesisText` might still be stale in the frontend. Check: does `ChatCanvas` correctly read from `messages[0].content` for the initial synthesis and `message.content` for follow-ups?
+
+2. **"Based on abstracts" disclosure** — softened to `"Abstracts only · full texts not reviewed"` in 50% opacity. Check: is the UI showing the old or new version?
+
+3. **Evidence not remaining grounded across turns** — follow-up evidence spans are computed and stored in message metadata, but the frontend sidebar only shows initial synthesis evidence spans. Check: does `EvidencePanel` in the sidebar accept per-message evidence spans?
+
+4. **Follow-up questions duplicate** — `deduplicateFollowUpOptions()` normalizes case/whitespace. Check: does the LLM produce near-duplicates with different wording that passes the dedup?
+
+5. **prac-04 type queries ("improve my focus at work")** — broad goal-framing queries often return preliminary evidence. The synthesis correctly reports weak evidence, but verdictDirectness suffers. Retrieval repair helps marginally. This is a retrieval problem, not a synthesis problem.
 
 ---
 
