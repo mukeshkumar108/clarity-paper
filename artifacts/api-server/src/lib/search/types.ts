@@ -268,6 +268,26 @@ export interface DebugMetadata {
   paperCountAfterRepair: number | null;
 }
 
+// ─── Pathways ────────────────────────────────────────────────────────────────
+
+export type PathwayIcon =
+  | "strong"
+  | "complicated"
+  | "population"
+  | "emerging"
+  | "practical"
+  | "mechanism"
+  | "contradiction";
+
+export interface Pathway {
+  label: string;
+  preview: string;
+  question: string;
+  evidenceFit: "direct" | "adjacent" | "weak";
+  relevantPaperCount: number;
+  icon: PathwayIcon;
+}
+
 // ─── SSE streaming ────────────────────────────────────────────────────────────
 
 /** Events emitted during a streaming search. Used by POST /search/stream. */
@@ -284,6 +304,7 @@ export type SearchProgressEvent =
       confidence: string;
       evidenceSpans: EvidenceSpan[];
       followUpOptions: string[];
+      pathways: Pathway[];
       coverageNote: "abstracts_only";
     }
   | { type: "done"; sessionId: number }
@@ -299,11 +320,8 @@ export interface SearchResult {
   evidenceSnapshot: EvidenceSnapshot;
   papers: RankedPaper[];
   followUpOptions: string[];
+  pathways: Pathway[];
   evidenceSpans: EvidenceSpan[];
-  /**
-   * Indicates the depth of source material reviewed.
-   * Currently always "abstracts_only" — full-text retrieval is not yet implemented.
-   */
   coverageNote: "abstracts_only" | "partial_full_text" | "full_text";
   debugMetadata?: DebugMetadata;
 }
@@ -332,6 +350,7 @@ export interface SearchSessionMessage {
       newPaperIds: string[];
       newPaperTitles: string[];
     };
+    pathways?: Pathway[];
   };
   createdAt: string;
 }

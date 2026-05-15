@@ -113,6 +113,24 @@ export interface EvidenceSpan {
   evidence: SourceSnippet[];
 }
 
+export type PathwayIcon =
+  | "strong"
+  | "complicated"
+  | "population"
+  | "emerging"
+  | "practical"
+  | "mechanism"
+  | "contradiction";
+
+export interface Pathway {
+  label: string;
+  preview: string;
+  question: string;
+  evidenceFit: "direct" | "adjacent" | "weak";
+  relevantPaperCount: number;
+  icon: PathwayIcon;
+}
+
 export interface SearchResult {
   sessionId: number;
   query: string;
@@ -123,8 +141,8 @@ export interface SearchResult {
   evidenceSnapshot: EvidenceSnapshot;
   papers: RankedPaper[];
   followUpOptions: string[];
+  pathways: Pathway[];
   evidenceSpans: EvidenceSpan[];
-  /** Always "abstracts_only" until full-text retrieval is implemented */
   coverageNote: "abstracts_only" | "partial_full_text" | "full_text";
 }
 
@@ -155,6 +173,7 @@ export interface SearchSessionMessage {
     evidenceSpans?: any[];
     spanDiagnostics?: any;
     followUpOptions?: string[];
+    pathways?: Pathway[];
   };
   createdAt: string;
 }
@@ -175,7 +194,7 @@ export interface SearchSessionDetail extends SearchResult {
 
 export type SearchStreamEvent =
   | { type: "papers"; papers: RankedPaper[]; evidenceSnapshot: EvidenceSnapshot; noEvidence: boolean }
-  | { type: "synthesis"; synthesisText: string; confidence: string; evidenceSpans: EvidenceSpan[]; followUpOptions: string[]; coverageNote: "abstracts_only" }
+  | { type: "synthesis"; synthesisText: string; confidence: string; evidenceSpans: EvidenceSpan[]; followUpOptions: string[]; pathways: Pathway[]; coverageNote: "abstracts_only" }
   | { type: "done"; sessionId: number }
   | { type: "error"; message: string };
 

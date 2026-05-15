@@ -184,18 +184,27 @@ describe("editorial resilience", () => {
   });
 
   it("retries search synthesis and then uses the backup model", async () => {
-    callLLMMock
-      .mockRejectedValueOnce(new Error("timeout-1"))
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          synthesisText:
-            "The evidence does point to a real effect here, but it looks narrower and messier than the broad claim people usually make.",
-          confidence: "moderate",
-          noEvidence: false,
-          paperSummaries: [{ externalId: "paper-1", summary: "This review found a mixed but real signal." }],
-          followUpOptions: ["Would this hold up in healthy adults?", "Does the effect depend on context?"],
-        }),
-      );
+    const successBlob = {
+      synthesisText: "The evidence does point to a real effect here, but it looks narrower and messier than the broad claim people usually make.",
+      pathways: [
+        { label: "What the strongest evidence says", preview: "A meta-analysis finds a real but modest effect", question: "What does the best evidence actually show?", evidenceFit: "direct", relevantPaperCount: 1, icon: "strong" },
+        { label: "Why it is more complicated", preview: "The effect depends heavily on the population and context", question: "Why is the picture more complicated than people think?", evidenceFit: "direct", relevantPaperCount: 1, icon: "complicated" },
+      ],
+      openThreads: [],
+      confidence: "moderate",
+      noEvidence: false,
+      paperSummaries: [{ externalId: "paper-1", summary: "This review found a mixed but real signal." }],
+      followUpOptions: ["Would this hold up in healthy adults?", "Does the effect depend on context?"],
+    };
+
+    // Promise.all runs editorial/mechanical/follow-up concurrently,
+    // so call order depends on JS microtask scheduling — mock by model, not sequence.
+    callLLMMock.mockImplementation((_sys: string, _msg: string, _schema: unknown, options: { model?: string }) => {
+      if (options?.model === "primary-search-model") {
+        return Promise.reject(new Error("timeout-1"));
+      }
+      return Promise.resolve(JSON.stringify(successBlob));
+    });
 
     const { synthesisePapers } = await import("../src/lib/search/synthesizer");
     const result = await synthesisePapers(
@@ -251,7 +260,9 @@ describe("editorial resilience", () => {
     );
 
     expect(result.synthesisText).toMatch(/narrower and messier/);
-    expect(callLLMMock).toHaveBeenCalledTimes(2);
-    expect(callLLMMock.mock.calls[1]?.[3]?.model).toBe("backup-search-model");
+    const calledModels = callLLMMock.mock.calls.map((c: unknown[]) => (c[3] as { model?: string })?.model);
+    expect(calledModels).toContain("primary-search-model");
+    expect(calledModels).toContain("backup-search-model");
+    expect(callLLMMock).toHaveBeenCalledTimes(4);
   });
 });

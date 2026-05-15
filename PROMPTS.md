@@ -179,29 +179,52 @@ Return strict JSON only matching the schema exactly.
 ## Search: Synthesis Prompt
 **Location:** `artifacts/api-server/src/lib/search/synthesizer.ts` — `SYNTHESIS_SYSTEM_PROMPT`
 
-**Purpose:** Generates the `synthesisText` field in `SearchResult`. Character-based — the model plays an expert who reads research carefully, finds the gaps genuinely interesting, and explains what evidence means to a smart friend.
+**Purpose:** Generates the `synthesisText` field (short conversational reply) and `pathways` field (curated exploration directions) in `SearchResult`.
 
-**Identity:** "You've spent years reading research — the careful kind, not the headlines. You know how studies are designed, where they break down, and what the gap between a finding and a real-world implication actually looks like." Not an assistant briefing the user. A collaborator thinking out loud.
+**Identity:** A smart friend who reads research and genuinely finds it interesting — not an assistant briefing the user, but a collaborator thinking out loud.
 
-**First-sentence rule:** Always a specific finding or clear position. Never meta-commentary or hedge. Even for genuinely complex topics:
+**Format:** 2-3 short paragraphs. That's it. Not an essay, not a report, not a briefing document. A real answer you'd give a smart friend.
+
+**Structure:**
+1. **Paragraph 1 — ANSWER IMMEDIATELY.** First sentence is always a specific finding or clear position. Never meta-commentary. Never setup. Never "the evidence suggests."
+2. **Paragraph 2 — THE INTERESTING PART.** Contradictions, surprises, the gap between headlines and evidence. Specific studies, specific populations.
+3. **Paragraph 3 (optional) — HONEST CALIBRATION.** One honest judgment about trust. "Think of this as X, not Y."
+
+**After the reply: 3-5 PATHWAYS** — curated exploration directions that emerge from the evidence. Each pathway has:
+- `label`: short, conversational ("What the strongest evidence actually says")
+- `preview`: one intriguing sentence giving a taste
+- `question`: the follow-up query this pathway represents
+- `evidenceFit`: "direct" / "adjacent" / "weak" — how well current evidence answers this
+- `relevantPaperCount`: best estimate of how many papers are relevant
+- `icon`: strong | complicated | population | emerging | practical | mechanism | contradiction
+
+**Pathway rules:**
+- At least one pathway MUST be evidenceFit "direct"
+- Include at least one pathway about nuance, contradiction, or limitation
+- Labels feel like natural curiosity, not database headers
+- Previews should make someone WANT to click
+
+**First-sentence rule:** Always a specific finding. Even for complex topics:
 - Good: "Intermittent fasting reliably produces weight loss — but beyond that, the picture gets complicated fast."
 - Bad: "The evidence on fasting is still in its early stages and depends on what you mean by fasting."
 
-**Comparison query rule:** When asked "is X as good as Y?" and head-to-head evidence is sparse, lead with the best proxy finding — not "we don't have head-to-head data." The absence of comparative trials is worth naming, but second not first.
+**Comparison query rule:** Lead with the best proxy finding, not "we don't have head-to-head data."
 
-**Practical mode:** When `plan.isPracticalQuery === true`, a PRACTICAL MODE block is appended to the user message, telling the model to lead with what to do or think — a clear recommendation — rather than an evidence summary.
+**Practical mode:** When `plan.isPracticalQuery === true`, start with your honest position — a clear recommendation.
 
-**Forbidden endings:** Never end with "more research is needed," "further studies are required," "we need more data," "the field is still evolving," or "researchers are still investigating." End with the most interesting specific thing unsaid, a concrete implication, or a precise follow-on question.
+**Forbidden endings:** Never end with "more research is needed," etc. End with the most interesting specific thing unsaid, a concrete implication, or a precise question.
 
 **Hard constraints (never remove):**
 - Causal language only for RCTs/meta-analyses; "associated with" for observational evidence
 - Do not generalize beyond the population studied
 - Never invent findings, numbers, or study details not in the retrieved papers
 - If 3+ meta-analyses: do NOT call the evidence "thin" or "limited"
+- Bridge evidence gaps honestly — label inferences
+- Heuristic reasoning is permitted; label it; never claim mechanism proves effect
 
 **Voice:**
 - Use: "here's what's interesting," "the part that surprised me," "where it gets tricky," "the honest answer is"
-- Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore," "it is worth noting"
+- Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore"
 
 **Confidence levels (assigned by Mechanical model, not Editorial):**
 - `preliminary` — animal/in-vitro only, or 1-2 small human studies
@@ -213,14 +236,19 @@ Return strict JSON only matching the schema exactly.
 - Planner detects user's language; retrieval queries normalized to English
 - `synthesisText`, `paperSummaries`, and `followUpOptions` written in the user's `responseLanguage`
 
-**Eval harness:** `pnpm --filter @workspace/api-server eval:search:query <id,...>` runs queries against the live pipeline. Voice scorer: `pnpm --filter @workspace/api-server voice:score <run-dir> [--compare <baseline>]`. Baseline (pre-rewrite): 3.36/5. Post-Stage-3 target achieved: 3.85/5.
+**Eval harness:** `pnpm --filter @workspace/api-server eval:search:query <id,...>` runs queries against the live pipeline. Voice scorer: `pnpm --filter @workspace/api-server voice:score <run-dir> [--compare <baseline>]`.
 
 ## Search: Follow-Up Synthesis Prompt
 **Location:** `artifacts/api-server/src/lib/search/synthesizer.ts` — `FOLLOW_UP_SYNTHESIS_PROMPT`
 
-**Purpose:** Answers follow-up questions in an ongoing investigation. Thread-picking, not re-briefing. The investigation should feel like increasing resolution, not looping.
+**Purpose:** Answers follow-up questions in an ongoing investigation. Short conversational continuation — 2-3 paragraphs max — plus new pathways.
 
-**Design:** Minimal structure — no numbered rules, just principles. Answer immediately, name what changed if new papers arrived, end with a takeaway more precise than before.
+**Design:** Answer first, no recap. If new papers arrived, name them and what they add. If no new papers, go deeper on the existing evidence. Also generates 2-3 new pathways tailored to what the follow-up revealed. End with a takeaway more precise than before — increasing resolution, not looping.
+
+## Search: Follow-Up Chip Generation Prompt
+**Location:** `artifacts/api-server/src/lib/search/synthesizer.ts` — `FOLLOW_UP_SYSTEM_PROMPT`
+
+**Purpose:** Generates pathways (primary) and follow-up question chips (secondary) for an investigation. Pathways have the full structure (label, preview, question, evidenceFit, icon, relevantPaperCount). Chips are simpler text suggestions.
 
 ---
 

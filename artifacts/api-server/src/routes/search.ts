@@ -208,6 +208,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
     let followUpEvidenceSpans: EvidenceSpan[] | null = null;
     let followUpSpanDiagnostics: GroundingDiagnostics | null = null;
     let followUpOptions: string[] = [];
+    let followUpPathways: any[] = [];
     
     // Step 3: Handle based on action type
     if (action.actionType === "clarification_prompt") {
@@ -252,6 +253,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
       
       assistantContent = synthesis.synthesisText;
       followUpOptions = synthesis.followUpOptions;
+      const followUpPathways = synthesis.pathways ?? [];
       
     } else {
       // refine_current_canvas or focused_retrieval_expansion - MAY need new evidence
@@ -354,12 +356,14 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
         evidenceSnapshot: mergedSnapshot,
         papers: mergedPapers,
         followUpOptions: synthesis.followUpOptions ?? session.followUpOptions,
+        pathways: synthesis.pathways ?? [],
         evidenceSpans: followUpEvidenceSpans,
         coverageNote: "abstracts_only",
       } as any);
       
       assistantContent = synthesis.synthesisText;
       followUpOptions = synthesis.followUpOptions;
+      followUpPathways = synthesis.pathways ?? [];
     }
 
     // Step 4: Save assistant message with synthesized content
@@ -388,6 +392,7 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
           evidenceSpans: followUpEvidenceSpans ?? undefined,
           spanDiagnostics: followUpSpanDiagnostics ?? undefined,
           followUpOptions: followUpOptions.length > 0 ? followUpOptions : undefined,
+          pathways: followUpPathways.length > 0 ? followUpPathways : undefined,
         },
       })
       .returning();

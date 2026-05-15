@@ -47,93 +47,47 @@ User types "is intermittent fasting better than calorie restriction?"
 │    - intentType: claim_check / comparison / etc│
 │    - entities: ["intermittent fasting", ...]   │
 │    - isComparison: true, comparisonTarget: ... │
-│    - isPracticalQuery: true/false (detected    │
-│      from "should I", "is it worth", "I want   │
-│      to improve", personal context framing)    │
+│    - isPracticalQuery: true/false              │
 │    - directQueryVariants + contextQueryVariants│
 │    - hiddenGoals, desiredEvidenceTypes         │
 └──────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────┐
-│ 2. retrieval.ts — 4 sources in parallel       │
-│    Semantic Scholar + OpenAlex + EuropePMC +   │
-│    CORE. Direct lane first, context only if   │
-│    direct < 12 papers.                        │
-└──────────────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────┐
-│ 3-5. dedupe.ts → reranker.ts → topicalVeto.ts │
-│    DOI+title dedup, Cohere relevance filter,   │
-│    LLM-based irrelevance removal               │
-└──────────────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────┐
-│ 6. ranking.ts + evidenceFit.ts                │
-│    - Classify study design (regex: meta → RCT  │
-│    → cohort → editorial)                       │
-│    - Compute evidence score (35% design + 20%  │
-│    recency + 10% citation + 20% population +   │
-│    15% outcome fit)                            │
-│    - Evidence-fit label per paper:             │
-│      direct / adjacent / weak / mismatch       │
-│    - Sort: fit → bucket → score. Top 10.       │
-└──────────────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────┐
-│ 7. retrievalJudge.ts → queryRepair.ts         │
-│    Quality score (includes evidenceFitBonus).  │
-│    Triggers repair if quality < 0.28 or        │
-│    entity conflation detected.                 │
-│    Max 1 repair iteration.                     │
+│ 2-7. Retrieve, dedupe, rerank, veto, rank,    │
+│     evaluate evidence fit, judge, repair      │
+│    (unchanged — same pipeline stages)          │
 └──────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────┐
 │ 8. synthesizer.ts — THREE parallel LLM calls   │
 │                                                │
-│    Initial synthesis:                          │
-│    A. Editorial (Claude Sonnet / Flash, ~20s): │
-│       synthesisText — the answer prose          │
-│       openThreads — 2-4 threads Claude left    │
-│       deliberately unsaid; become the follow-up│
-│       chips. Calibrated by conversationDepth.  │
-│       orient depth = 180-280 word hard limit.  │
+│    A. Editorial (Gemini 2.5 Flash):            │
+│       synthesisText — SHORT CONVERSATIONAL     │
+│       REPLY (2-3 paragraphs) +                  │
+│       pathways — curated exploration dirs       │
+│                                                │
 │    B. Mechanical (Flash Lite, ~5s):            │
 │       paperSummaries + confidence + noEvidence  │
 │                                                │
-│    Follow-up synthesis (plain text, no schema):│
-│    A. Editorial (Claude, plain prose, ~20s)    │
-│       No JSON schema — avoids Claude 400s from │
-│       strict-mode minItems/maxItems rejection. │
-│    B. Chips (Gemini Lite, parallel, ~5s):      │
-│       followUpOptions generated separately.    │
-│       confidence from evidenceSnapshot.        │
+│    C. Follow-ups (Flash Lite, ~5s):            │
+│       pathways + followUpOptions                │
 │                                                │
-│    Total latency: max(A, B) ≈ 20s              │
+│    Total latency: max(A, B, C) ≈ same          │
 └──────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────┐
-│ 9. groundingValidator.ts + evidenceSpans.ts   │
-│    - Check: no fabricated numbers, no causal    │
-│    overreach, no model-prior leakage           │
-│    - Build: claim→snippet matching (deterministic│
-│    bigram + entity weighting, no LLM)          │
-│    - Safety: only verbatim abstract substrings  │
+│ 9. groundingValidator + evidenceSpans          │
+│    (unchanged)                                  │
 └──────────────────────────────────────────────┘
                        │
                        ▼
 ┌──────────────────────────────────────────────┐
 │ 10. Persist session + insert synthesis message │
-│     search_sessions: query, plan, papers,       │
-│       synthesisText (original first read),      │
-│       evidenceSnapshot                          │
-│     search_session_messages: kind="synthesis",   │
-│       content=synthesisText, metadata           │
+│    NEW: pathways stored in search_sessions     │
+│    and in search_session_messages metadata     │
 └──────────────────────────────────────────────┘
 ```
 
@@ -144,13 +98,12 @@ User types "is intermittent fasting better than calorie restriction?"
 | Planner | Gemini 2.5 Flash Lite | `OPENROUTER_PLANNER_MODEL` |
 | Editorial synthesis | Gemini 2.5 Flash | `OPENROUTER_SEARCH_MODEL` |
 | Mechanical extraction | Gemini 2.5 Flash Lite | `OPENROUTER_SEARCH_LITE_MODEL` |
+| Follow-up generation | Gemini 2.5 Flash Lite | `OPENROUTER_SEARCH_FOLLOWUP_MODEL` |
 | Sidebar orchestrator | Gemini 2.5 Flash | `OPENROUTER_ORCHESTRATOR_MODEL` |
 | Editorial backup | Claude 3.5 Haiku | `OPENROUTER_SEARCH_BACKUP_MODEL` |
 | Reranker | Cohere Rerank 4 Fast | `OPENROUTER_RERANK_MODEL` |
 | Topical veto | Llama 3.1 8B | `OPENROUTER_TOPIC_FILTER_MODEL` |
 | Query repair | Gemini 2.5 Flash Lite | `OPENROUTER_REPAIR_MODEL` |
-
-**In Railway production:** `OPENROUTER_SEARCH_MODEL` is set to `anthropic/claude-sonnet-4-6` — this drives editorial synthesis AND follow-up synthesis, ensuring consistent voice across all turns.
 
 ---
 
@@ -278,17 +231,6 @@ paper_cache:
 4. **Follow-up questions duplicate** — `deduplicateFollowUpOptions()` normalizes case/whitespace. Check: does the LLM produce near-duplicates with different wording that passes the dedup?
 
 5. **prac-04 type queries ("improve my focus at work")** — broad goal-framing queries often return preliminary evidence. The synthesis correctly reports weak evidence, but verdictDirectness suffers. Retrieval repair helps marginally. This is a retrieval problem, not a synthesis problem.
-
-**Fixed (2026-05-15):**
-- Follow-up 400 errors when Claude set as editorial — `followUpOutputSchema` had `whatChanged: z.string().optional()`; Claude rejects schemas with `.optional()` or `.nullable()` in strict mode. Fixed by removing `whatChanged` from schema entirely.
-- Orchestrator inheriting Claude model — `ORCHESTRATOR_MODEL` fallback chain included `OPENROUTER_SEARCH_MODEL`. Fixed: orchestrator always defaults to Gemini Flash regardless of editorial model.
-- Over-answering on first turn — planner now emits `conversationDepth: "orient"|"answer"|"review"`. Synthesis calibrates depth based on this: orient = give the clearest single finding, leave rest as openThreads.
-- Follow-up chips disconnected from synthesis — chips were generated by a separate Gemini Lite call, blind to what the editorial model had just said. Now: Claude generates `openThreads` (what it deliberately left unsaid) as part of initial synthesis; these become the chips directly. Follow-up synthesis also receives the previous turn's openThreads as context.
-- Conversation memory — last 4 non-synthesis messages now flow into every follow-up synthesis call.
-- **Follow-up 400 errors (root cause fix)** — `followUpOutputSchema.followUpOptions` had `min(2).max(4)` constraints → Claude strict mode rejects `minItems`/`maxItems`. Fixed by dropping structured JSON from follow-up entirely: Claude now returns plain prose (no schema), chips generated separately via Gemini Lite in parallel, confidence comes from `evidenceSnapshot.overallConfidence`.
-- **Orient-mode over-answering** — depth block was vague ("keep prose focused"). Now has hard word count: 180–280 words max, 1-2 supporting ideas, explicit STOP instruction. Everything else goes in openThreads.
-- **Fallback copy warmed up** — was "The paper list is still worth browsing directly. We found relevant research, but the Clarity readout did not land cleanly this time." Now: "I found relevant research but had trouble putting the answer together this time. The papers below are worth browsing directly."
-- **Topical veto too aggressive for orient queries** — was filtering Lion's Mane from 46 papers down to 4, then synthesizer got nothing useful. Fixed: orient + topic_exploration bypasses both deterministic filters and LLM veto entirely.
 
 ---
 

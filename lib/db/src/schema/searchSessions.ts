@@ -13,6 +13,7 @@ export const searchSessionsTable = pgTable("search_sessions", {
   confidence: text("confidence").notNull().default(""),
   evidenceSnapshot: jsonb("evidence_snapshot").notNull().default({}),
   followUpOptions: jsonb("follow_up_options").notNull().default([]),
+  pathways: jsonb("pathways").notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

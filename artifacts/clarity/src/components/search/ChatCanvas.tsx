@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import type { SearchResult, SearchSessionMessage, RankedPaper, EvidenceSpan } from "@/lib/search-types";
+import type { SearchResult, SearchSessionMessage, RankedPaper, EvidenceSpan, Pathway } from "@/lib/search-types";
 import { SynthesisAnswer } from "./SynthesisAnswer";
 import { SynthesisSkeleton } from "./SynthesisSkeleton";
 import { CompactEvidence } from "./CompactEvidence";
 import { PaperCard } from "./PaperCard";
 import { EvidencePanel } from "./EvidencePanel";
 import { FollowUpOptions } from "./FollowUpOptions";
+import { PathwayGroup } from "./PathwayCard";
 import { MainRefineInput } from "./MainRefineInput";
 import { FilterChips, type EvidenceFilter } from "./FilterChips";
 import { customFetch } from "@workspace/api-client-react";
@@ -148,6 +149,7 @@ function AssistantMessage({
   isFirst = false,
   overrideText,
   followUpOptions,
+  pathways,
   evidenceSnapshot,
 }: {
   result: SearchResult;
@@ -155,6 +157,7 @@ function AssistantMessage({
   isFirst?: boolean;
   overrideText?: string;
   followUpOptions?: string[];
+  pathways?: Pathway[];
   evidenceSnapshot?: SearchResult["evidenceSnapshot"];
 }) {
   const [showEvidence, setShowEvidence] = useState(false);
@@ -162,6 +165,7 @@ function AssistantMessage({
   const text = overrideText ?? result.synthesisText;
   const options = followUpOptions ?? (isFirst ? result.followUpOptions : []);
   const snapshot = evidenceSnapshot ?? result.evidenceSnapshot;
+  const activePathways = pathways ?? (isFirst ? result.pathways : []);
 
   return (
     <div className="flex gap-3">
@@ -216,8 +220,16 @@ function AssistantMessage({
           )}
         </div>
 
-        {/* Follow-up suggestions — shown on every turn that has options */}
-        {options.length > 0 && (
+        {/* Pathway cards — primary exploration model */}
+        {activePathways.length > 0 && (
+          <PathwayGroup pathways={activePathways} onSelect={onFollowUp} />
+        )}
+
+        {/* Follow-up suggestions — secondary quick options */}
+        {options.length > 0 && activePathways.length === 0 && (
+          <FollowUpOptions options={options} onSelect={onFollowUp} />
+        )}
+        {options.length > 0 && activePathways.length > 0 && (
           <FollowUpOptions options={options} onSelect={onFollowUp} />
         )}
       </div>
@@ -574,6 +586,7 @@ export function ChatCanvas({
     kind?: string;
     isFirst?: boolean;
     followUpOptions?: string[];
+    pathways?: Pathway[];
   }> = [];
 
   // Add initial synthesis as message[0] if we have it
@@ -585,6 +598,7 @@ export function ChatCanvas({
       kind: "synthesis",
       isFirst: true,
       followUpOptions: result.followUpOptions,
+      pathways: result.pathways,
     });
   }
 
@@ -599,6 +613,7 @@ export function ChatCanvas({
         content: message.content,
         kind: message.kind,
         followUpOptions: msgMeta?.followUpOptions,
+        pathways: msgMeta?.pathways,
       });
     }
   }
@@ -637,6 +652,7 @@ export function ChatCanvas({
                   isFirst={isFirst}
                   overrideText={isFirst ? undefined : message.content}
                   followUpOptions={message.followUpOptions}
+                  pathways={message.pathways}
                   evidenceSnapshot={isFirst ? filteredSnapshot : undefined}
                 />
               );

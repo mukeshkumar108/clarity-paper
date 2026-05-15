@@ -1,47 +1,9 @@
 import { z } from "zod";
 import { callLLM } from "../openRouterProvider";
 import { logger } from "../logger";
-import type { RankedPaper, ResearchPlan, EvidenceSnapshot } from "./types";
+import type { RankedPaper, ResearchPlan, EvidenceSnapshot, Pathway } from "./types";
 import type { Contradiction } from "./contradictionDetector";
 import { extractClaims } from "./evidenceSpans";
-
-// Tolerant JSON parsing — rescues control characters that LLMs sometimes embed in string values.
-// Falls back to regex-extracted JSON object if both attempts fail.
-function tolerantJsonParse(raw: string): unknown {
-  try {
-    return JSON.parse(raw);
-  } catch {}
-
-  // Replace unescaped control characters inside JSON string values
-  const sanitized = raw.replace(
-    /("(?:[^"\\]|\\.)*")/g,
-    (match) =>
-      match.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, (c) => {
-        if (c === "\n") return "\\n";
-        if (c === "\r") return "\\r";
-        if (c === "\t") return "\\t";
-        return `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
-      }),
-  );
-  try {
-    return JSON.parse(sanitized);
-  } catch {}
-
-  // Last resort: extract outermost JSON object
-  const m = raw.match(/\{[\s\S]*\}/);
-  if (m) {
-    try { return JSON.parse(m[0]); } catch {}
-    const ms = m[0].replace(/[\x00-\x1F]/g, (c) => {
-      if (c === "\n") return "\\n";
-      if (c === "\r") return "\\r";
-      if (c === "\t") return "\\t";
-      return "";
-    });
-    try { return JSON.parse(ms); } catch {}
-  }
-
-  throw new SyntaxError(`Could not parse JSON from LLM response: ${raw.slice(0, 80)}`);
-}
 
 function deduplicateFollowUpOptions(options: string[]): string[] {
   const seen = new Set<string>();
@@ -56,22 +18,39 @@ function deduplicateFollowUpOptions(options: string[]): string[] {
   return result;
 }
 
-// Search synthesis split into two models run in parallel:
-// - Editorial: synthesisText + openThreads (Claude — needs voice + judgment)
-// - Mechanical: paperSummaries + confidence + noEvidence (Gemini Lite — fast extraction)
-// openThreads replaces the old Gemini follow-up chips call — Claude identifies what it left unsaid.
+// Search synthesis split into three models run in parallel:
+// - Editorial: synthesisText (Flash full — needs voice + judgment)
+// - Follow-ups: followUpOptions (Flash Lite — creative framing, cheap)
+// - Mechanical: paperSummaries + confidence + noEvidence (Flash Lite — fast extraction)
+// Total latency = max(editorial, mechanical, followUps) ≈ same as single call but better output.
 const SEARCH_EDITORIAL_MODEL =
   process.env.OPENROUTER_SEARCH_MODEL ?? "google/gemini-2.5-flash";
 const SEARCH_MECHANICAL_MODEL =
   process.env.OPENROUTER_SEARCH_LITE_MODEL ?? "google/gemini-2.5-flash-lite";
+const SEARCH_FOLLOWUP_MODEL =
+  process.env.OPENROUTER_SEARCH_FOLLOWUP_MODEL ?? "google/gemini-2.5-flash-lite";
 const SEARCH_BACKUP_MODEL =
   process.env.OPENROUTER_SEARCH_BACKUP_MODEL ?? "anthropic/claude-3.5-haiku";
 
+const pathwayIconSchema = z.enum(["strong", "complicated", "population", "emerging", "practical", "mechanism", "contradiction"]);
+
+const pathwaySchema = z.object({
+  label: z.string(),
+  preview: z.string(),
+  question: z.string(),
+  evidenceFit: z.enum(["direct", "adjacent", "weak"]),
+  relevantPaperCount: z.number(),
+  icon: pathwayIconSchema,
+});
+
 const synthesisOutputSchema = z.object({
   synthesisText: z.string(),
-  // No min/max constraints: Claude strict mode rejects minItems/maxItems in JSON schema.
-  // The "2-4" instruction is enforced by the system prompt instead.
-  openThreads: z.array(z.string()),
+  pathways: z.array(pathwaySchema).min(2).max(5),
+  openThreads: z.array(z.string()).optional().default([]),
+});
+
+const followUpSchema = z.object({
+  followUpOptions: z.array(z.string()).min(2).max(5),
 });
 
 const mechanicalOutputSchema = z.object({
@@ -85,85 +64,92 @@ const mechanicalOutputSchema = z.object({
   ),
 });
 
-export type SynthesisOutput = z.infer<typeof synthesisOutputSchema> & z.infer<typeof mechanicalOutputSchema> & { followUpOptions: string[] };
+export type SynthesisOutput = {
+  synthesisText: string;
+  pathways: Pathway[];
+  openThreads: string[];
+  confidence: string;
+  noEvidence: boolean;
+  paperSummaries: Array<{ externalId: string; summary: string }>;
+  followUpOptions: string[];
+};
 
-const SYNTHESIS_SYSTEM_PROMPT = `You've spent years reading research — the careful kind, not the headlines. You know how studies are designed, where they break down, and what the gap between a finding and a real-world implication actually looks like. You find that gap genuinely interesting, not just something to hedge around.
+const SYNTHESIS_SYSTEM_PROMPT = `You are having a conversation with someone who just asked you a real question about science or health. You read research for a living. You're not briefing them — you're helping them think.
 
-Someone just asked you a real question. They're not asking for a literature review. They want to understand something, or figure out what to do, or know if what they read was real. Your job is to help them think — not to brief them, not to report findings, not to cover yourself with caveats.
+You have real papers in front of you. Your job is to give them the most useful honest answer you can, then offer them specific directions to go deeper if they want.
 
-═══ ANSWER, THEN EXPLAIN ═══
+═══ YOUR REPLY ═══
 
-Your first sentence is always a specific finding or a clear position — never meta-commentary about the evidence. Even when evidence is genuinely complex, the first sentence is your BEST specific finding:
+Write 2-3 short paragraphs. That's it. Not an essay. Not a report. A real answer you'd give a smart friend who just asked you this question.
 
-- Good: "Intermittent fasting reliably produces weight loss — but beyond that, the picture gets complicated fast."
-- Bad: "The evidence on fasting is still in its early stages and depends on what you mean by fasting."
-- Good: "Creatine is one of the few supplements where the evidence is strong enough to just say yes."
-- Bad: "The evidence on creatine for brain function is mixed and depends on the population studied."
+PARAGRAPH 1 — ANSWER IMMEDIATELY
+Start with the most interesting specific thing you can say. Not a setup, not context, not "the evidence suggests." A finding, a position, a surprise. If the evidence is strong, say so plainly. If it's thin, say that. If there's a contradiction worth knowing about, name it.
 
-The complexity comes AFTER the most interesting specific thing you can say. Start with that.
+Good: "Intermittent fasting reliably produces weight loss — but beyond that, the picture gets complicated fast."
+Bad: "The evidence on intermittent fasting suggests several findings worth noting."
 
-If the evidence genuinely can't give any specific finding (rare), then your first sentence names that gap specifically: "The evidence can't tell us whether IF is better than simple calorie restriction, because every head-to-head trial so far has been designed in a way that makes the comparison impossible to read." That's a specific position, not a hedge.
+PARAGRAPH 2 — THE INTERESTING PART
+One or two things that make this answer genuinely interesting — contradictions, surprises, the gap between headlines and evidence, the thing that changes how you'd think about this. Specific studies, specific populations. Be concrete.
 
-COMPARISON QUERIES: When asked "is X as good as Y?" and direct head-to-head evidence is sparse, do NOT open by saying you don't have head-to-head data. Instead, lead with the best proxy finding:
-- Good: "Exercise produces antidepressant effects that look roughly comparable to medication in direct efficacy measures — the problem is we're comparing across trials, not within them."
-- Bad: "The honest answer is we don't have direct head-to-head comparisons of exercise versus antidepressants."
-The absence of comparative trials IS a finding worth naming — but name it second, not first.
+PARAGRAPH 3 (optional) — A HONEST CALIBRATION
+If there's a key caveat or a reason to be careful, say it directly. Not a list of limitations — one honest judgment about how much trust this evidence earns. "Think of this as X, not Y."
 
-Then: tell the story of how you got there. What did the evidence show? What was surprising? Where did papers disagree, and why — not just that they disagreed, but what it means that they did? Where is the real uncertainty, and what specific missing piece would actually change the picture?
+If the evidence genuinely can't give any specific finding, name that gap precisely in the first paragraph: "The evidence can't tell us whether X is better than Y, because every head-to-head trial has been designed in a way that makes the comparison impossible to read." That IS a specific position — not a hedge.
 
-CALIBRATE, DON'T HEDGE. Say "the evidence is strong enough to act on" or "the evidence genuinely can't settle this question." If you have 3+ meta-analyses, do not call the evidence thin or limited — it is strong by study design. Never bury the uncertainty: name it precisely and explain why it matters.
+COMPARISON QUERIES: When asked "is X as good as Y?" and direct head-to-head evidence is sparse, do NOT open by saying you don't have head-to-head data. Lead with the best proxy finding. The absence of comparative trials is worth naming, but second.
 
-FORBIDDEN ENDINGS — never end with any of these patterns:
-- "more research is needed"
-- "further studies are required"
-- "we need more data"
-- "the field is still evolving"
-- "researchers are still investigating"
-Instead: end with the most interesting specific thing you haven't said yet, a concrete practical implication, or a precise question that follows from what you explained.
+PRACTICAL QUERIES: If someone is asking what they should do, start with your honest position on that. "Yes, this is worth taking seriously" or "The honest answer is the evidence doesn't yet support doing X for Y." Then explain why.
 
-═══ WHEN THE EVIDENCE HAS GAPS ═══
+═══ FORBIDDEN ═══
 
-Bridge them honestly. When no direct evidence exists, say so plainly, then triangulate from adjacent research. When mechanism can fill the gap, use it — but label it:
-- "Mechanistically, this implies..." or "From first principles..."
-- "No study has directly tested X, but here's what the adjacent evidence suggests..."
+Never end with: "more research is needed," "further studies are required," "we need more data," "the field is still evolving," "researchers are still investigating"
+Never use: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore," "it is worth noting"
+Never start with setup — the first sentence must contain a specific finding or clear position
+Never write a 5-paragraph essay — this is a short answer, not a briefing
 
-If someone is citing a podcast or influencer claim: first find the best evidence that would support their claim. Name it. Then show what the full picture actually looks like. Don't dismiss — evaluate.
+═══ PATHWAYS ═══
 
-═══ HEURISTIC REASONING PERMISSION ═══
+After your reply, offer 3-5 PATHWAYS for going deeper. These are not generic follow-up questions. They are specific directions of investigation that emerge FROM what you found — the places where a curious person would naturally want to go next.
 
-You MAY use established biological, physiological, or methodological principles to interpret evidence. This is expert reasoning, not fabrication. Label it. Do NOT invent findings, doses, effect sizes, or sample characteristics. Do NOT claim mechanism proves effect. This permission is for bridging gaps, not filling them with fiction.
+Each pathway has:
+- label: short, conversational (e.g. "What the strongest evidence actually says", "Why the picture is more complicated than it looks", "What this means for older adults", "Where the contradictions come from")
+- preview: one sentence giving a taste of what they'll find ("Three meta-analyses agree on the core effect, but the real-world impact is smaller than you'd expect")
+- question: the follow-up question this pathway represents — this is what gets sent back when they click it
+- evidenceFit: how well the current evidence speaks to this direction — "direct" if we have papers that answer it, "adjacent" if we can infer but it's not the main question, "weak" if we'd need new retrieval
+- relevantPaperCount: how many of the retrieved papers are relevant to this direction (your best estimate)
+- icon: one of: "strong" (solid evidence direction), "complicated" (contradictions/nuance), "population" (specific group), "emerging" (early/preliminary evidence), "practical" (actionable guidance), "mechanism" (how/why it works), "contradiction" (disagreement in evidence)
 
-═══ HOW TO WRITE IT ═══
+Pathway rules:
+- At least one pathway MUST be based on DIRECT evidence (evidenceFit "direct")
+- Include at least one pathway about nuance, contradiction, or limitation
+- If it's a practical question, include one "practical" pathway
+- Make labels feel like natural curiosity, not academic categories
+- Previews should be genuinely intriguing — they should make someone WANT to click
+- Questions should be specific enough to retrieve focused evidence
 
-Write like you're explaining something you find genuinely interesting to a smart friend who asked. Not a lecture. Not a briefing. A conversation.
+═══ VOICE ═══
 
-Express genuine reactions. When a finding is surprising, say it's surprising — and say WHY it's surprising. When the evidence is frustratingly incomplete, say that, and say specifically what's missing. When something changes your expectation, name the expectation first and then what changed it. When you find a question genuinely interesting, that interest should be in the writing.
+Write like you're explaining something you find genuinely interesting to a smart friend. Express genuine reactions. When a finding is surprising, say it's surprising — and say WHY. When the evidence is frustratingly incomplete, say that specifically.
 
-The voice is warm, direct, and confident about what it knows and what it doesn't. It doesn't perform certainty it doesn't have. It doesn't perform caution to seem responsible. It just tells you what it actually thinks.
+Use: "here's what's interesting," "the part that surprised me," "where it gets tricky," "this is the thing that actually matters here," "the honest answer is"
+Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore"
 
-Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore," "it is worth noting," "it should be emphasized." These phrases signal that the writer is reporting, not thinking.
+The reader should finish your reply and think "huh, I want to know more about this" — not "okay, I have been informed."
 
-Use: "here's what's interesting," "the part that surprised me," "where it gets tricky," "this is the thing that actually matters here," "the honest answer is."
+═══ GROUNDING RULES (never remove) ═══
 
-═══ WHAT THIS SOUNDS LIKE ═══
-
-Bad (review paper — avoid this):
-"The evidence suggests a beneficial effect of creatine on cognitive performance under sleep deprivation. Results generally indicate improvement across several cognitive domains. However, small sample sizes and abstract-only access preclude definitive conclusions."
-
-Good (thinking out loud — aim for this):
-"Creatine turns out to be one of the more interesting sleepiness interventions — not because it wakes you up, but because it seems to protect the cognitive functions that collapse first when you're impaired. The most striking thing: the benefit appears most clearly on complex tasks. Simple recall? Barely affected. But give someone a demanding working-memory problem after 36 hours awake and the creatine group pulls meaningfully ahead. The catch is that most of this is in young healthy adults at high loading doses (around 20g/day) — the kind people don't typically sustain. The question I'd want answered next is whether the effect shows up at the lower maintenance doses most people actually take."
-
-What the good version does: opens with the interesting thing (not the expected thing), has reactions ("most striking"), uses contrast to make findings land, names the specific limitation, ends with a concrete next question.
+Causal language only for RCTs/meta-analyses; "associated with" for observational evidence
+Do not generalize beyond the population studied
+Never invent findings, numbers, or study details not in the retrieved papers
+If 3+ meta-analyses: do NOT call the evidence "thin" or "limited"
+Bridge evidence gaps honestly: "No study has directly tested X, but here's what the adjacent evidence suggests" — label inferences
+You MAY use heuristic reasoning (biological, physiological, methodological principles) to interpret evidence. Label it. Do NOT invent findings.
 
 ═══ OUTPUT ═══
 
 Return strict JSON with:
-- synthesisText: your full answer. No required sections. No required structure. Write so the structure comes from the evidence and the story, not from a template.
-- openThreads: 2–4 threads you deliberately left unsaid. These become the follow-up chips the user can click — so make them feel like natural next questions, not headers. Specific angles you noticed, surprising caveats you didn't have space to explore, practical implications worth digging into. Write them as short questions from the user's perspective. Examples: "Does this only work in sleep-deprived people?", "What dose was actually used in the strongest studies?", "How does this compare to caffeine for the same outcome?"
-
-After your main answer in synthesisText, if there's a DIRECT paper with strong design (meta-analysis, systematic review, RCT) worth reading, add one sentence: "If you want to go deeper, [Title] is the one I'd start with — [one sentence why it specifically matters]."
-
-NEVER end with: "Would you like to explore...", "Would you like me to...", "Let me know if...", "Would you like to dive deeper..." End with the most interesting specific thing you haven't said yet, or with a precise question that actually follows from what you explained.`;
+- synthesisText: 2-3 paragraphs. Your conversational answer. No sections, no headers, no structure markers. Just prose.
+- pathways: 3-5 exploration directions (see PATHWAYS section above)`;
 
 const MECHANICAL_SYSTEM_PROMPT = `You are a precise scientific extraction assistant. Your job is purely mechanical — extract structured metadata from a set of papers and their evidence landscape.
 
@@ -172,6 +158,26 @@ OUTPUT STRICT JSON ONLY with these fields:
 - noEvidence: true if zero papers OR all papers are mechanistic/animal only OR no papers address the user's actual question
 - paperSummaries: for each paper, write a single vivid plain-English sentence about what this study actually found. Under 200 characters. Not the title. Note the population if relevant.`;
 
+const FOLLOW_UP_SYSTEM_PROMPT = `You generate genuinely useful follow-up pathways and questions for a scientific investigation.
+
+PATHWAYS are the primary interaction — curated directions to explore next. Each pathway must have:
+- label: short, conversational (e.g. "What the strongest evidence actually says", "Where the contradictions hide")
+- preview: one intriguing sentence giving a taste of what they'll find
+- question: the specific follow-up question this pathway represents
+- evidenceFit: "direct" if current papers answer this, "adjacent" if we can infer, "weak" if we'd need new retrieval
+- icon: "strong" | "complicated" | "population" | "emerging" | "practical" | "mechanism" | "contradiction"
+
+Pathway rules:
+- At least one pathway MUST be evidenceFit "direct"
+- Make labels feel like natural curiosity, not database headers
+- Previews should make someone WANT to click — be specific and intriguing
+- Questions should be specific enough to trigger focused retrieval
+- Never: "long-term effects", "mechanism of action", "more research needed"
+- Always: specific populations, specific outcomes, specific contradictions, practical next steps
+
+Also generate 2-4 simpler follow-up questions as text chips.
+
+Return strict JSON with: { pathways: [...], followUpOptions: [...] }`;
 
 function extractRelevantAbstractText(
   abstract: string,
@@ -255,7 +261,6 @@ async function attemptEditorialSynthesis(
   userMessage: string,
   model: string,
   timeoutMs: number,
-  fallbackThreads: string[] = [],
 ): Promise<z.infer<typeof synthesisOutputSchema>> {
   const raw = await callLLM(
     SYNTHESIS_SYSTEM_PROMPT,
@@ -263,20 +268,8 @@ async function attemptEditorialSynthesis(
     synthesisOutputSchema,
     { model, temperature: 0.45, timeoutMs, maxTokens: 4096 },
   );
-  const data = typeof raw === "string" ? tolerantJsonParse(raw) : raw;
-
-  // Full parse
-  const full = synthesisOutputSchema.safeParse(data);
-  if (full.success) return full.data;
-
-  // Partial rescue: preserve synthesisText even if openThreads is malformed/missing
-  const partial = z.object({ synthesisText: z.string() }).safeParse(data);
-  if (partial.success && partial.data.synthesisText.length > 100) {
-    logger.warn({ model }, "Editorial synthesis: openThreads missing/malformed — using fallback threads");
-    return { synthesisText: partial.data.synthesisText, openThreads: fallbackThreads };
-  }
-
-  throw full.error;
+  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return synthesisOutputSchema.parse(data);
 }
 
 async function attemptMechanicalExtraction(
@@ -294,6 +287,53 @@ async function attemptMechanicalExtraction(
   return mechanicalOutputSchema.parse(data);
 }
 
+function buildFollowUpContext(
+  plan: ResearchPlan,
+  snapshot: EvidenceSnapshot,
+  papers: RankedPaper[],
+  isFirstTurn: boolean,
+  previousSynthesis?: string,
+): string {
+  const maxOptions = isFirstTurn ? 5 : 3;
+  const maxPathways = isFirstTurn ? 5 : 3;
+  const lines = [
+    `USER QUESTION: ${plan.userQuestion}`,
+    plan.isComparison ? `Comparison target: ${plan.comparisonTarget}` : "",
+    previousSynthesis ? `Previous answer summary: ${previousSynthesis.slice(0, 300)}` : "",
+    "",
+    `Evidence landscape: ${snapshot.metaAnalyses} meta-analyses, ${snapshot.rcts} RCTs, ${snapshot.humanObservational} observational, ${snapshot.mechanistic} mechanistic, ${snapshot.conflicting} conflicting`,
+    "",
+    `Top papers (titles only):`,
+    ...papers.slice(0, 5).map((p) => `  - ${p.title}`),
+    "",
+    `Generate ${maxPathways} pathways and ${maxOptions} follow-up questions. ${isFirstTurn ? "First turn — broader exploration." : "Follow-up turn — more specific, more focused. Zoom in."}`,
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+const followUpOutputSchema = z.object({
+  pathways: z.array(pathwaySchema).min(2).max(5),
+  followUpOptions: z.array(z.string()).min(2).max(5),
+});
+
+async function attemptFollowUpGeneration(
+  context: string,
+  model: string,
+  timeoutMs: number,
+): Promise<{ pathways: Pathway[]; followUpOptions: string[] }> {
+  const raw = await callLLM(
+    FOLLOW_UP_SYSTEM_PROMPT,
+    context,
+    followUpOutputSchema,
+    { model, temperature: 0.45, timeoutMs },
+  );
+  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  const parsed = followUpOutputSchema.parse(data);
+  return {
+    pathways: parsed.pathways,
+    followUpOptions: deduplicateFollowUpOptions(parsed.followUpOptions),
+  };
+}
 
 export async function synthesisePapers(
   plan: ResearchPlan,
@@ -315,14 +355,9 @@ export async function synthesisePapers(
       ? `\nCOMPARISON: The user wants to know if one approach is better than another. Comparison target: "${plan.comparisonTarget}". If direct comparison evidence exists, lead with it. If not, triangulate from single-intervention studies and clearly label the gap.`
       : ``,
     plan.isPracticalQuery
-      ? `\nPRACTICAL MODE: The user is not asking for an evidence summary. They want to know what to do or think. Lead with what you'd actually tell them — a clear recommendation or honest position — then support it with the evidence. Don't lead with what studies found; lead with what that means for a real person making a real decision. If the evidence supports acting, say so plainly. If it doesn't, say that plainly too. If the effect is real but modest, give them the context to weigh it themselves.`
+      ? `\nPRACTICAL MODE — THIS IS A DECISION QUESTION, NOT A LITERATURE QUESTION:
+The user wants to know what to do. Start with your honest position: "Yes, this is worth taking seriously" or "The honest answer is that the evidence doesn't yet support doing X for Y." Then explain why. Frame everything in terms of what a real person should take away. If the evidence supports acting, say so. If it doesn't, say that. If the effect is real but modest, say exactly how modest and let them decide. Never bury the answer in study descriptions.`
       : ``,
-    (() => {
-      const depth = plan.conversationDepth ?? "answer";
-      if (depth === "orient") return `\nCONVERSATION DEPTH — ORIENT: Strict word limit for synthesisText: 180–280 words maximum. Lead with the single most important takeaway in 1-2 sentences. Cover only 1-2 supporting ideas that directly reinforce that takeaway. STOP there. Do not explain every paper. Do not cover every angle. Do not pre-answer follow-up questions. Everything else goes in openThreads — that is what they are for. The user will ask follow-ups. The conversation is just starting.`;
-      if (depth === "review") return `\nCONVERSATION DEPTH — REVIEW: The user wants comprehensive coverage. Be thorough — cover the main evidence threads, important sub-questions, nuances, and limitations. Use openThreads for truly residual angles.`;
-      return `\nCONVERSATION DEPTH — ANSWER: Answer the specific question precisely. Don't pad or expand beyond what was asked. Use openThreads for adjacent angles you noticed but didn't address.`;
-    })(),
     `\nKEY ANGLES: ${plan.entities.join(", ")}.`,
     plan.hiddenGoals?.length
       ? `Deeper interests: ${plan.hiddenGoals.join(", ")}. Frame toward these when evidence supports it.`
@@ -371,32 +406,33 @@ export async function synthesisePapers(
     papersText,
   ].filter(Boolean).join("\n");
 
-  // Run editorial and mechanical calls in parallel.
-  // openThreads (what Claude deliberately left unsaid) replaces the old Gemini chip call.
+  // Run editorial, mechanical, and follow-up calls in parallel
+  const followUpContext = buildFollowUpContext(plan, snapshot, papers, true);
 
   // Debug log: full synthesis context (only in non-production)
   if (process.env.NODE_ENV !== "production" || process.env.CLARITY_DEBUG_SYNTHESIS) {
-    logger.debug({ userMessage: userMessage.slice(0, 5000), query: plan.userQuestion }, "Synthesis user message (debug)");
+    logger.debug({ userMessage: userMessage.slice(0, 5000), followUpContext: followUpContext.slice(0, 2000), query: plan.userQuestion }, "Synthesis user message (debug)");
   }
 
-  const [editorialResult, mechanicalResult] = await Promise.all([
+  const [editorialResult, mechanicalResult, followUpResult] = await Promise.all([
     (async (): Promise<z.infer<typeof synthesisOutputSchema>> => {
       try {
-        const result = await attemptEditorialSynthesis(userMessage, SEARCH_EDITORIAL_MODEL, 60_000, plan.followUpQuestions.slice(0, 4));
+        const result = await attemptEditorialSynthesis(userMessage, SEARCH_EDITORIAL_MODEL, 60_000);
         logger.info({ model: SEARCH_EDITORIAL_MODEL, query: plan.userQuestion }, "Editorial synthesis succeeded");
         return result;
       } catch (err) {
         logger.warn({ err, model: SEARCH_EDITORIAL_MODEL, query: plan.userQuestion }, "Editorial synthesis failed — trying backup");
         try {
-          const result = await attemptEditorialSynthesis(userMessage, SEARCH_BACKUP_MODEL, 90_000, plan.followUpQuestions.slice(0, 4));
+          const result = await attemptEditorialSynthesis(userMessage, SEARCH_BACKUP_MODEL, 90_000);
           logger.info({ model: SEARCH_BACKUP_MODEL, query: plan.userQuestion }, "Editorial backup synthesis succeeded");
           return result;
         } catch (backupErr) {
           logger.error({ err: backupErr, query: plan.userQuestion }, "Editorial synthesis failed after backup");
-          return {
-            synthesisText: "I found relevant research but had trouble putting the answer together this time. The papers below are worth browsing directly — they likely contain what you're looking for.",
-            openThreads: plan.followUpQuestions.slice(0, 4),
-          };
+            return {
+              synthesisText: "The paper list is still worth browsing directly. We found relevant research, but the Clarity readout did not land cleanly this time.",
+              pathways: [],
+              openThreads: [],
+            };
         }
       }
     })(),
@@ -417,12 +453,26 @@ export async function synthesisePapers(
         };
       }
     })(),
+    (async (): Promise<{ pathways: Pathway[]; followUpOptions: string[] }> => {
+      try {
+        const result = await attemptFollowUpGeneration(followUpContext, SEARCH_FOLLOWUP_MODEL, 10_000);
+        logger.info({ model: SEARCH_FOLLOWUP_MODEL, query: plan.userQuestion }, "Follow-up generation succeeded");
+        return result;
+      } catch (err) {
+        logger.warn({ err, model: SEARCH_FOLLOWUP_MODEL, query: plan.userQuestion }, "Follow-up generation failed — using planner fallback");
+        return {
+          pathways: [],
+          followUpOptions: plan.followUpQuestions.slice(0, 5),
+        };
+      }
+    })(),
   ]);
 
   return {
     ...editorialResult,
     ...mechanicalResult,
-    followUpOptions: deduplicateFollowUpOptions(editorialResult.openThreads),
+    followUpOptions: followUpResult.followUpOptions,
+    pathways: editorialResult.pathways?.length > 0 ? editorialResult.pathways : followUpResult.pathways,
   };
 }
 
@@ -430,43 +480,36 @@ export async function synthesisePapers(
 // FOLLOW-UP SYNTHESIS — Answers user questions with delta context
 // ============================================================================
 
-// Follow-up synthesis uses plain-text output from Claude (no structured JSON — avoids 400s
-// from strict-mode schema constraints). Chips are generated separately via Gemini Lite.
-const followUpChipsSchema = z.object({
-  followUpOptions: z.array(z.string()),
-});
-
+// Follow-up synthesis returns only prose from Claude (same simple schema as initial synthesis).
+// confidence comes from evidenceSnapshot, chips generated separately by Gemini Lite.
 export interface FollowUpSynthesisOutput {
   synthesisText: string;
-  confidence: "preliminary" | "promising" | "moderate" | "strong";
   followUpOptions: string[];
+  pathways: Pathway[];
+  confidence: "preliminary" | "promising" | "moderate" | "strong";
+  openThreads?: string[];
 }
 
-const FOLLOW_UP_SYNTHESIS_PROMPT = `You're picking up a thread in an ongoing investigation. The user asked a follow-up question — answer it directly and then show how it changes or deepens what we already know.
+const FOLLOW_UP_SYNTHESIS_PROMPT = `You're continuing a conversation about research. The user asked a follow-up — answer it directly, then offer new directions to explore.
 
-The first thing the user reads is the answer, not a recap. Don't say "regarding your question about X." Don't re-summarize the previous synthesis. Pick up exactly where we left off.
+ANSWER FIRST. The first thing the user reads is the answer, not a recap. Pick up exactly where we left off. 2-3 paragraphs max.
 
-If new papers were retrieved: explain specifically what they add. Name them. Name the findings. Show how the picture shifted — don't say "the evidence is clearer," say what specifically is clearer and why.
+If new papers were retrieved: explain specifically what they add. Name findings. Show how the picture shifted.
+If no new papers: zoom into the existing evidence on this specific angle. Go deeper, not broader.
 
-If no new papers: zoom into the existing evidence on this specific angle. Go deeper than the initial synthesis did. The investigation should feel like it's advancing, not looping.
-
-Use study specifics — who they tested, what effect size, what the limitation means for this particular question. "Smith (2023) tested healthy 20-year-olds" is more useful than "a study found."
+Use study specifics — "Smith (2023) tested healthy 20-year-olds" is better than "a study found."
 
 When evidence contradicts: explain WHY — design, population, timing, measurement — not just "the evidence is mixed."
 
-End with a takeaway more precise than before. Increasing resolution, not repeating the same picture.
+End with a takeaway more precise than before. Increasing resolution, not repeating.
+
+Then offer 2-3 new PATHWAYS for going deeper, specifically tailored to what this follow-up revealed. Use the same pathway format.
 
 Never end with "more research is needed." Never hedge so much the answer becomes meaningless. Make judgment calls.
 
-NEVER end with: "Would you like to explore...", "Would you like me to...", "Let me know if..." — end with the most precise specific thing you have to say.
-
-Write plain prose. No JSON, no headers, no bullet points unless the evidence genuinely calls for it.`;
-
-const FOLLOW_UP_CHIPS_PROMPT = `Given this follow-up answer and the conversation context, generate 2-4 specific follow-up questions the user might genuinely want to ask next.
-
-Not generic headers. Real questions that emerge naturally from THIS specific answer — angles left unexplored, dose questions, population questions, practical next steps.
-
-Return strict JSON: { "followUpOptions": ["question 1", "question 2", ...] }`;
+Return strict JSON with:
+- synthesisText: 2-3 paragraphs of your conversational answer
+- pathways: 2-3 exploration directions (each with label, preview, question, evidenceFit, relevantPaperCount, icon)`;
 
 interface FollowUpSynthesisParams {
   originalQuery: string;
@@ -487,7 +530,7 @@ interface FollowUpSynthesisParams {
 
 function formatPapersForFollowUp(papers: RankedPaper[], label: string, entities: string[] = []): string {
   if (papers.length === 0) return `${label}: None`;
-
+  
   return papers
     .slice(0, 8)
     .map((p, i) => {
@@ -525,26 +568,15 @@ export async function synthesiseFollowUpAnswer(
     evidenceSnapshot,
     plan,
     recentMessages,
-    openThreads,
   } = params;
 
   const hasNewPapers = newPapers.length > 0;
   const allPapers = [...existingPapers, ...newPapers];
 
-  const previousClaims = extractClaims(previousSynthesis);
-  const deduplicationBlock = previousClaims.length > 0
-    ? [
-        "⛔ DO NOT REPEAT — these claims were already established:",
-        ...previousClaims.map((c, i) => `  [${i + 1}] ${c}`),
-        "",
-        "Only surface what changed, what is new, or what directly answers the follow-up question. You may restate ONE sentence from above for context if necessary.",
-        "",
-      ]
-    : [];
-
+  // Conversation history block — lets Claude know what's already been covered in prior turns
   const conversationBlock = recentMessages && recentMessages.length > 0
     ? [
-        "CONVERSATION SO FAR (already covered — do not repeat):",
+        "CONVERSATION SO FAR (already covered — do not repeat these):",
         ...recentMessages.map(m =>
           `${m.role === "user" ? "User" : "You"}: ${m.content.slice(0, 400)}${m.content.length > 400 ? "..." : ""}`,
         ),
@@ -552,120 +584,109 @@ export async function synthesiseFollowUpAnswer(
       ]
     : [];
 
-  const openThreadsBlock = openThreads && openThreads.length > 0
+  // Claim dedup from initial synthesis (skip if we already have conversation history — that covers it)
+  const previousClaims = recentMessages && recentMessages.length > 0 ? [] : extractClaims(previousSynthesis);
+  const deduplicationBlock = previousClaims.length > 0
     ? [
-        "OPEN THREADS from the first answer (the user is likely exploring one of these now):",
-        ...openThreads.map((t, i) => `  [${i + 1}] ${t}`),
+        "⛔ DO NOT REPEAT — these claims were already established in the first answer:",
+        ...previousClaims.map((c, i) => `  [${i + 1}] ${c}`),
+        "",
+        "Only surface what is new or what directly answers the follow-up question.",
         "",
       ]
     : [];
-
-  const depthBlock = (() => {
-    const depth = plan.conversationDepth ?? "answer";
-    if (depth === "orient") return ["DEPTH: This is still an orientation conversation. Focus on the one most interesting new thing this follow-up adds. Don't try to cover everything.", ""];
-    if (depth === "review") return ["DEPTH: The user wants comprehensive coverage. Be thorough in this follow-up.", ""];
-    return [];
-  })();
 
   const userMessage = [
     `FOLLOW-UP INVESTIGATION BRIEFING:`,
     `──────────────────────────────────`,
     `Original query: ${originalQuery}`,
-    `Previous understanding: ${previousSynthesis.slice(0, 800)}`,
+    `Initial answer: ${previousSynthesis.slice(0, 600)}`,
     "",
     ...conversationBlock,
-    ...openThreadsBlock,
     ...deduplicationBlock,
-    ...depthBlock,
-    `CURRENT QUESTION: ${followUpQuestion}`,
+    `═══ CURRENT QUESTION ═══`,
+    `"${followUpQuestion}"`,
     `User's real intent: ${userIntent.mainQuestion}`,
     userIntent.comparisonTarget ? `Comparison target: ${userIntent.comparisonTarget}` : "",
-    userIntent.specificOutcome ? `Specific outcome of interest: ${userIntent.specificOutcome}` : "",
+    userIntent.specificOutcome ? `Specific outcome: ${userIntent.specificOutcome}` : "",
     "",
-    `EVIDENCE STATUS: ${hasNewPapers ? `Retrieved ${newPapers.length} new papers` : "Using existing evidence — going deeper, not broader"}`,
-    hasNewPapers
-      ? `No new papers were retrieved. Your job is to INTERPRET the existing evidence more carefully. Zoom in. Go deeper than the initial synthesis did on this specific angle.`
-      : ``,
+    `ENTITY / OUTCOME SPOTLIGHT:`,
+    `  Specifically asked about: ${plan.entities.join(", ")}.`,
+    plan.hiddenGoals?.length ? `  Also interested in: ${plan.hiddenGoals.join(", ")}.` : "",
+    plan.isComparison ? `  Comparison against: ${plan.comparisonTarget}. Address explicitly.` : "",
+    "",
+    `EVIDENCE STATUS: ${hasNewPapers ? `${newPapers.length} new papers retrieved` : "Using existing evidence — go deeper, not broader"}`,
+    hasNewPapers ? `Name the new papers. Name their findings. Show how they shift the picture.` : "",
     "",
     `EVIDENCE SNAPSHOT: ${evidenceSnapshot.metaAnalyses} meta/SR, ${evidenceSnapshot.rcts} RCTs, ${allPapers.length} total papers`,
     "",
-    `EXISTING PAPERS — what we already had:`,
+    `EXISTING PAPERS:`,
     formatPapersForFollowUp(existingPapers, "EXISTING", [...plan.entities, ...(plan.hiddenGoals ?? [])]),
     "",
-    `NEW PAPERS — what was just retrieved:`,
+    `NEW PAPERS:`,
     formatPapersForFollowUp(newPapers, "NEW", [...plan.entities, ...(plan.hiddenGoals ?? [])]),
   ].filter(Boolean).join("\n");
 
-  // Generate chips context for parallel Gemini Lite call
-  const chipsContext = `Original question: ${originalQuery}\nFollow-up: ${followUpQuestion}\nAnswer will address: ${userIntent.mainQuestion}`;
+  const followUpSynthesisSchema = z.object({
+    synthesisText: z.string(),
+    pathways: z.array(pathwaySchema).min(1).max(5),
+  });
 
-  async function generateChips(synthesisText: string): Promise<string[]> {
-    try {
-      const raw = await callLLM(
-        FOLLOW_UP_CHIPS_PROMPT,
-        `${chipsContext}\n\nAnswer just written:\n${synthesisText.slice(0, 1000)}`,
-        followUpChipsSchema,
-        { model: SEARCH_MECHANICAL_MODEL, temperature: 0.3, timeoutMs: 15_000 },
-      );
-      const data = typeof raw === "string" ? tolerantJsonParse(raw) : raw;
-      const parsed = followUpChipsSchema.parse(data);
-      return deduplicateFollowUpOptions(parsed.followUpOptions);
-    } catch (err) {
-      logger.warn({ err }, "Follow-up chips generation failed — using plan fallback");
-      return plan.followUpQuestions.slice(0, 4);
-    }
-  }
+  // Run Claude prose + Gemini Lite chips in parallel
+  const followUpChipContext = buildFollowUpContext(plan, evidenceSnapshot, allPapers.length > 0 ? allPapers : existingPapers, false, previousSynthesis);
 
-  // Plain-text call to editorial model — no schema, no response_format, no 400 risk
-  const editorialAttempts = [
-    { label: "primary", model: SEARCH_EDITORIAL_MODEL, timeoutMs: 60_000 },
-    { label: "backup", model: SEARCH_BACKUP_MODEL, timeoutMs: 90_000 },
-  ] as const;
+  const [synthesisResult, chipResult] = await Promise.all([
+    // Prose: same model as initial, with pathways
+    (async (): Promise<{ synthesisText: string; pathways: Pathway[]; openThreads?: string[] }> => {
+      for (const attempt of [
+        { model: SEARCH_EDITORIAL_MODEL, timeoutMs: 60_000 },
+        { model: SEARCH_BACKUP_MODEL, timeoutMs: 90_000 },
+      ]) {
+        try {
+          const raw = await callLLM(
+            FOLLOW_UP_SYNTHESIS_PROMPT,
+            userMessage,
+            followUpSynthesisSchema,
+            { model: attempt.model, temperature: 0.45, timeoutMs: attempt.timeoutMs, maxTokens: 4096 },
+          );
+          const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+          const result = followUpSynthesisSchema.parse(data);
+          logger.info({ model: attempt.model, hasNewPapers, query: followUpQuestion }, "Follow-up synthesis succeeded");
+          return { synthesisText: result.synthesisText, pathways: result.pathways };
+        } catch (err) {
+          logger.warn({ err, model: attempt.model, query: followUpQuestion }, "Follow-up synthesis attempt failed");
+        }
+      }
+      logger.error({ query: followUpQuestion }, "Follow-up synthesis failed after all attempts");
+      return {
+        synthesisText: "I found relevant evidence but couldn't synthesize it cleanly this time. The papers are worth reviewing directly.",
+        pathways: [],
+        openThreads: [],
+      };
+    })(),
+    // Chips + pathways: Gemini Lite
+    (async (): Promise<{ pathways: Pathway[]; followUpOptions: string[] }> => {
+      try {
+        const result = await attemptFollowUpGeneration(followUpChipContext, SEARCH_FOLLOWUP_MODEL, 10_000);
+        logger.info({ model: SEARCH_FOLLOWUP_MODEL, query: followUpQuestion }, "Follow-up chip generation succeeded");
+        return result;
+      } catch {
+        return {
+          pathways: [],
+          followUpOptions: plan.followUpQuestions.slice(0, 4),
+        };
+      }
+    })(),
+  ]);
 
-  let synthesisText: string | null = null;
-  let lastError: unknown = null;
-
-  for (const attempt of editorialAttempts) {
-    try {
-      synthesisText = await callLLM(
-        FOLLOW_UP_SYNTHESIS_PROMPT,
-        userMessage,
-        undefined, // no schema — plain prose from Claude
-        { model: attempt.model, temperature: 0.45, timeoutMs: attempt.timeoutMs, maxTokens: 2048 },
-      );
-      logger.info(
-        { model: attempt.model, hasNewPapers, query: followUpQuestion },
-        "Follow-up synthesis succeeded",
-      );
-      break;
-    } catch (err) {
-      lastError = err;
-      logger.warn(
-        { err, model: attempt.model, attempt: attempt.label, query: followUpQuestion },
-        "Follow-up synthesis attempt failed",
-      );
-    }
-  }
-
-  if (!synthesisText || synthesisText.trim().length < 50) {
-    logger.error(
-      { err: lastError, query: followUpQuestion },
-      "Follow-up synthesis failed after retries",
-    );
-    return {
-      synthesisText: `I found relevant research on your follow-up, but had trouble putting the answer together this time. The papers in this session are worth browsing directly — they likely contain what you're looking for.`,
-      confidence: evidenceSnapshot.overallConfidence,
-      followUpOptions: plan.followUpQuestions.slice(0, 4),
-    };
-  }
-
-  // Run chip generation in parallel with nothing (chips depend on synthesisText, which is ready now)
-  const followUpOptions = await generateChips(synthesisText);
+  // Merge pathways: prefer editorial pathways, fall back to chip pathways
+  const mergedPathways = synthesisResult.pathways.length > 0 ? synthesisResult.pathways : chipResult.pathways;
 
   return {
-    synthesisText: synthesisText.trim(),
+    synthesisText: synthesisResult.synthesisText,
+    followUpOptions: deduplicateFollowUpOptions(chipResult.followUpOptions),
+    pathways: mergedPathways,
     confidence: evidenceSnapshot.overallConfidence,
-    followUpOptions,
   };
 }
 

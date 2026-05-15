@@ -138,6 +138,7 @@ export function useStreamingSearch() {
                 confidence: event.confidence,
                 evidenceSpans: event.evidenceSpans,
                 followUpOptions: event.followUpOptions,
+                pathways: event.pathways ?? [],
                 coverageNote: event.coverageNote,
               };
               setState({

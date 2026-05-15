@@ -262,6 +262,7 @@ function fallbackSynthesis(): SynthesisOutput {
     noEvidence: false,
     paperSummaries: [],
     followUpOptions: [],
+    pathways: [],
   };
 }
 
@@ -348,6 +349,7 @@ export async function buildSearchResultFromPapers(
     evidenceSnapshot: snapshot,
     papers: papersWithSummaries,
     followUpOptions: synthesis.followUpOptions,
+    pathways: synthesis.pathways ?? [],
     evidenceSpans,
     coverageNote: "abstracts_only",
   };
@@ -367,6 +369,7 @@ export async function overwriteSearchSession(
       confidence: result.confidence,
       evidenceSnapshot: result.evidenceSnapshot as any,
       followUpOptions: result.followUpOptions as any,
+      pathways: (result.pathways ?? []) as any,
     })
     .where(eq(searchSessionsTable.id, sessionId));
 }
@@ -387,6 +390,7 @@ export async function rerunSearchIntoExistingSession(
     evidenceSnapshot: fresh.evidenceSnapshot,
     papers: fresh.papers,
     followUpOptions: fresh.followUpOptions,
+    pathways: fresh.pathways ?? [],
     evidenceSpans: fresh.evidenceSpans,
     coverageNote: fresh.coverageNote,
     debugMetadata: fresh.debugMetadata,
@@ -430,7 +434,7 @@ export async function runSearch(
     logger.info({ query }, "Query cache hit — emitting events and persisting session");
     // Emit progress events immediately so streaming clients get fast response
     onProgress?.({ type: "papers", papers: cached.papers, evidenceSnapshot: cached.evidenceSnapshot, noEvidence: cached.noEvidence });
-    onProgress?.({ type: "synthesis", synthesisText: cached.synthesisText, confidence: cached.confidence, evidenceSpans: cached.evidenceSpans, followUpOptions: cached.followUpOptions, coverageNote: "abstracts_only" });
+    onProgress?.({ type: "synthesis", synthesisText: cached.synthesisText, confidence: cached.confidence, evidenceSpans: cached.evidenceSpans, followUpOptions: cached.followUpOptions, pathways: cached.pathways ?? [], coverageNote: "abstracts_only" });
     // Still persist session so user history is correct
     let sessionId = 0;
     try {
@@ -678,6 +682,7 @@ export async function runSearch(
     confidence: synthesis.confidence,
     evidenceSpans,
     followUpOptions: synthesis.followUpOptions,
+    pathways: synthesis.pathways ?? [],
     coverageNote: "abstracts_only",
   });
 
@@ -722,6 +727,7 @@ export async function runSearch(
         confidence: synthesis.confidence,
         evidenceSnapshot: snapshot as any,
         followUpOptions: synthesis.followUpOptions as any,
+        pathways: (synthesis.pathways ?? []) as any,
       })
       .returning();
     sessionId = session.id;
@@ -764,6 +770,7 @@ export async function runSearch(
     evidenceSnapshot: snapshot,
     papers: papersWithSummaries,
     followUpOptions: synthesis.followUpOptions,
+    pathways: synthesis.pathways ?? [],
     evidenceSpans,
     coverageNote: "abstracts_only" as const,
     debugMetadata,
@@ -829,6 +836,7 @@ export async function getSearchSession(
     evidenceSnapshot: snapshot,
     papers,
     followUpOptions: (session.followUpOptions as any[]) ?? [],
+    pathways: (session.pathways as any[]) ?? [],
     evidenceSpans,
     coverageNote: "abstracts_only" as const,
     messages: normalizedMessages,
