@@ -66,6 +66,11 @@ const topicalVetoSchema = z.object({
 function shouldRunTopicalVeto(plan: ResearchPlan, papers: RankedPaper[]): boolean {
   if (papers.length <= MIN_PAPERS_TO_KEEP) return false;
 
+  // Orient queries need broad papers — don't run strict veto, only light-touch removal
+  if (plan.conversationDepth === "orient" && plan.intentType === "topic_exploration") {
+    return false;
+  }
+
   if (
     plan.intentType === "claim_check" ||
     plan.intentType === "topic_exploration" ||
@@ -100,6 +105,18 @@ function buildPrompt(plan: ResearchPlan, papers: RankedPaper[]): string {
     })
     .join("\n\n");
 
+  const isOrient = plan.conversationDepth === "orient";
+  const orientNote = isOrient
+    ? [
+        "NOTE: This is a broad exploratory question. The user wants an overview of what is known.",
+        "Keep review papers, mechanism papers, general overviews, and contextual background — these are all useful.",
+        "Only remove papers that are completely unrelated to the core topic (wrong intervention AND wrong topic area).",
+      ].join("\n")
+    : [
+        "A paper about the disease in general is not directly relevant if it does not actually study the intervention/exposure the user asked about.",
+        "A paper about the intervention in healthy aging is not directly relevant to a disease-treatment question unless it clearly speaks to that disease question.",
+      ].join("\n");
+
   return [
     `USER QUESTION: ${plan.userQuestion}`,
     `NORMALIZED ENGLISH QUESTION: ${plan.normalizedEnglishQuestion}`,
@@ -116,8 +133,7 @@ function buildPrompt(plan: ResearchPlan, papers: RankedPaper[]): string {
     '- remove: clearly off-topic for the user question, even if it mentions one entity or the disease area generally',
     "",
     "Only use remove for obvious mismatches. If unsure, use adjacent or keep.",
-    "A paper about the disease in general is not directly relevant if it does not actually study the intervention/exposure the user asked about.",
-    "A paper about the intervention in healthy aging is not directly relevant to a disease-treatment question unless it clearly speaks to that disease question.",
+    orientNote,
     "",
     "Return strict JSON only.",
     "",
@@ -194,11 +210,15 @@ export async function applyTopicalVeto(
 
   const reviewed = papers.slice(0, MAX_PAPERS_TO_REVIEW);
   const untouchedTail = papers.slice(MAX_PAPERS_TO_REVIEW);
-  const deterministicFilteredReviewed = reviewed.filter(
-    (paper) =>
-      !hasForeignInterventionMismatch(plan, paper) &&
-      !hasOffTopicConditionMismatch(plan, paper),
-  );
+  // Orient queries want broad papers — skip deterministic filters that assume strict intervention queries
+  const isOrient = plan.conversationDepth === "orient";
+  const deterministicFilteredReviewed = isOrient
+    ? reviewed
+    : reviewed.filter(
+        (paper) =>
+          !hasForeignInterventionMismatch(plan, paper) &&
+          !hasOffTopicConditionMismatch(plan, paper),
+      );
   const deterministicRemoved = reviewed.length - deterministicFilteredReviewed.length;
   const deterministicCombined = [...deterministicFilteredReviewed, ...untouchedTail];
 

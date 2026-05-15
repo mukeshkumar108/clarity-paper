@@ -222,4 +222,19 @@ export const EVAL_QUERIES: EvalQuery[] = [
     category: "practical_mode",
     notes: "Direct ask for prioritized guidance. Should rank options by evidence strength.",
   },
+
+  // ── Orient-mode reliability ───────────────────────────────────────────────
+  // Broad exploratory queries that previously triggered aggressive topical veto.
+  {
+    id: "orient-01",
+    query: "tell me about lions mane and the brain",
+    category: "orient_mode",
+    notes: "Real failure case. Should orient: get general overview papers, not be filtered to nothing. conversationDepth should be orient.",
+  },
+  {
+    id: "orient-02",
+    query: "what do we know about NAD+ and aging",
+    category: "orient_mode",
+    notes: "Broad mechanism question. Should surface review papers and mechanistic studies, not just intervention RCTs.",
+  },
 ];

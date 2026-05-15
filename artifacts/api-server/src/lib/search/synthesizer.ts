@@ -5,6 +5,44 @@ import type { RankedPaper, ResearchPlan, EvidenceSnapshot } from "./types";
 import type { Contradiction } from "./contradictionDetector";
 import { extractClaims } from "./evidenceSpans";
 
+// Tolerant JSON parsing — rescues control characters that LLMs sometimes embed in string values.
+// Falls back to regex-extracted JSON object if both attempts fail.
+function tolerantJsonParse(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {}
+
+  // Replace unescaped control characters inside JSON string values
+  const sanitized = raw.replace(
+    /("(?:[^"\\]|\\.)*")/g,
+    (match) =>
+      match.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, (c) => {
+        if (c === "\n") return "\\n";
+        if (c === "\r") return "\\r";
+        if (c === "\t") return "\\t";
+        return `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`;
+      }),
+  );
+  try {
+    return JSON.parse(sanitized);
+  } catch {}
+
+  // Last resort: extract outermost JSON object
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (m) {
+    try { return JSON.parse(m[0]); } catch {}
+    const ms = m[0].replace(/[\x00-\x1F]/g, (c) => {
+      if (c === "\n") return "\\n";
+      if (c === "\r") return "\\r";
+      if (c === "\t") return "\\t";
+      return "";
+    });
+    try { return JSON.parse(ms); } catch {}
+  }
+
+  throw new SyntaxError(`Could not parse JSON from LLM response: ${raw.slice(0, 80)}`);
+}
+
 function deduplicateFollowUpOptions(options: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -31,7 +69,9 @@ const SEARCH_BACKUP_MODEL =
 
 const synthesisOutputSchema = z.object({
   synthesisText: z.string(),
-  openThreads: z.array(z.string()).min(2).max(4),
+  // No min/max constraints: Claude strict mode rejects minItems/maxItems in JSON schema.
+  // The "2-4" instruction is enforced by the system prompt instead.
+  openThreads: z.array(z.string()),
 });
 
 const mechanicalOutputSchema = z.object({
@@ -215,6 +255,7 @@ async function attemptEditorialSynthesis(
   userMessage: string,
   model: string,
   timeoutMs: number,
+  fallbackThreads: string[] = [],
 ): Promise<z.infer<typeof synthesisOutputSchema>> {
   const raw = await callLLM(
     SYNTHESIS_SYSTEM_PROMPT,
@@ -222,8 +263,20 @@ async function attemptEditorialSynthesis(
     synthesisOutputSchema,
     { model, temperature: 0.45, timeoutMs, maxTokens: 4096 },
   );
-  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-  return synthesisOutputSchema.parse(data);
+  const data = typeof raw === "string" ? tolerantJsonParse(raw) : raw;
+
+  // Full parse
+  const full = synthesisOutputSchema.safeParse(data);
+  if (full.success) return full.data;
+
+  // Partial rescue: preserve synthesisText even if openThreads is malformed/missing
+  const partial = z.object({ synthesisText: z.string() }).safeParse(data);
+  if (partial.success && partial.data.synthesisText.length > 100) {
+    logger.warn({ model }, "Editorial synthesis: openThreads missing/malformed — using fallback threads");
+    return { synthesisText: partial.data.synthesisText, openThreads: fallbackThreads };
+  }
+
+  throw full.error;
 }
 
 async function attemptMechanicalExtraction(
@@ -329,13 +382,13 @@ export async function synthesisePapers(
   const [editorialResult, mechanicalResult] = await Promise.all([
     (async (): Promise<z.infer<typeof synthesisOutputSchema>> => {
       try {
-        const result = await attemptEditorialSynthesis(userMessage, SEARCH_EDITORIAL_MODEL, 60_000);
+        const result = await attemptEditorialSynthesis(userMessage, SEARCH_EDITORIAL_MODEL, 60_000, plan.followUpQuestions.slice(0, 4));
         logger.info({ model: SEARCH_EDITORIAL_MODEL, query: plan.userQuestion }, "Editorial synthesis succeeded");
         return result;
       } catch (err) {
         logger.warn({ err, model: SEARCH_EDITORIAL_MODEL, query: plan.userQuestion }, "Editorial synthesis failed — trying backup");
         try {
-          const result = await attemptEditorialSynthesis(userMessage, SEARCH_BACKUP_MODEL, 90_000);
+          const result = await attemptEditorialSynthesis(userMessage, SEARCH_BACKUP_MODEL, 90_000, plan.followUpQuestions.slice(0, 4));
           logger.info({ model: SEARCH_BACKUP_MODEL, query: plan.userQuestion }, "Editorial backup synthesis succeeded");
           return result;
         } catch (backupErr) {
@@ -552,7 +605,7 @@ export async function synthesiseFollowUpAnswer(
         { model: attempt.model, temperature: 0.45, timeoutMs: attempt.timeoutMs },
       );
 
-      const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+      const data = typeof raw === "string" ? tolerantJsonParse(raw) : raw;
       const result = followUpOutputSchema.parse(data);
       result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
 
