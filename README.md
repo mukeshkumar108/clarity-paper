@@ -1,126 +1,253 @@
-# Clarity Paper
+# Clarity
 
-Clarity Paper is a trust-focused research paper review app. Users upload or paste a paper, Pass 1 extracts structured scientific data, and Pass 2 rewrites that into human editorial prose.
+A scientific investigation tool. You type a messy human question. Clarity searches the research literature, reads the papers, and gives you an honest grounded answer — with every claim traceable to a real abstract passage.
 
-The current frontend also exposes a visible trust layer:
+**Core principle: the papers are the authority, not the AI.** The AI orients you. It does not deliver verdicts.
 
-- readable source rendering for uploaded documents
-- evidence cards for grounded findings
-- click-to-anchor navigation from claims back into source text
-- Q&A provenance labels (`[doc]` and `[general]`)
+---
 
-Read these first before changing anything:
+## What It Does
 
-1. `AGENTS.md`
-2. `ARCHITECTURE.md`
-3. `PROMPTS.md`
-4. `DECISIONS.md`
+Two surfaces:
 
-## Monorepo layout
+- **Search** — ask a research question, get multi-paper evidence synthesis. Claims link back to verbatim abstract text. This is the main product.
+- **Document Analysis** — upload a single paper, get an editorial review with trust calibration and grounding. (Secondary surface.)
 
-- `artifacts/clarity`: Vite React frontend
-- `artifacts/api-server`: Express API server
-- `lib/db`: Drizzle schema and database access
-- `lib/api-client-react`: generated API client/hooks used by the frontend
+---
 
-## Local development
+## How a Search Works
 
-1. Install deps: `pnpm install`
-2. Copy envs: `cp .env.example .env`
-3. Start Postgres: `docker compose up -d`
-4. Push schema: `pnpm --filter @workspace/db push`
-5. Seed demo papers if wanted: `pnpm seed:demos`
-6. Start app: `pnpm dev`
+```
+You type: "does creatine actually help the brain?"
+```
 
-Frontend runs on `http://localhost:5175`.
+### Step 1 — The planner reads your question
 
-## Deployment shape
+A fast model (Gemini Flash Lite) extracts:
+- **Intent** — is this a claim-check, a comparison, a dose question, a broad exploration?
+- **Entities** — the specific things you're asking about (creatine, brain, cognitive performance)
+- **Hidden goals** — what you probably care about underneath (memory? sleep deprivation? aging?)
+- **Conversation depth** — orient (broad first look), answer (specific question), review (comprehensive)
+- **Practical mode** — are you asking what to *do*, not just what the evidence *says*?
 
-Use one GitHub repo, not separate frontend/backend repos.
+### Step 2 — Retrieval from four sources in parallel
 
-- Frontend: Vercel
-- Backend: Railway
-- Database: Railway Postgres
+Semantic Scholar, OpenAlex, EuropePMC, and CORE are all queried simultaneously. Direct evidence queries run first. If fewer than 12 papers come back, broader context queries run too. All four sources degrade gracefully — if Semantic Scholar is rate-limited, the other three continue.
 
-This repo is now wired for split deployment:
+### Step 3 — Filter and rank
 
-- Vercel proxies `/api/*` to the Railway backend so auth/session cookies stay same-origin in production.
-- Backend uses Postgres-backed sessions via `connect-pg-simple`.
-- Backend is deployed on Railway using the repo-root `Dockerfile`.
+Papers go through four layers:
+1. **Deduplication** — same paper from different sources merged by DOI and fuzzy title match
+2. **Reranker** (Cohere) — semantic relevance score per paper; obvious noise dropped
+3. **Topical veto** (Llama 8B) — conservative LLM filter for clear intervention/condition mismatches; orient-mode queries bypass this
+4. **Evidence scoring** — each paper scored on study design (meta > RCT > cohort > editorial), recency, citation percentile, population type, and how directly it answers your question (direct / adjacent / weak / mismatch)
 
-## Current production status
+Top 10 papers advance to synthesis.
 
-Deployed and working:
+### Step 4 — Quality check + optional repair
 
-- Vercel frontend is live
-- Railway API server is live
-- Railway Postgres is attached
-- Demo papers are seeded into production
-- Login/session persistence works through the Vercel `/api` proxy
-- Readable document rendering is live
-- Claim-to-source grounding UI is live in the document workspace
+A judge model scores retrieval quality. If the score is below threshold, or if entity conflation is detected (e.g., got papers about creatine for muscular dystrophy instead of cognition), a repair cycle re-retrieves with tightened queries. Maximum one repair.
 
-Known issue:
+### Step 5 — Synthesis (two parallel calls)
 
-- Q&A still needs richer backend provenance payloads; the current UI can display provenance labels and evidence cards, but some answers still rely on best-available heuristic evidence matching
+**Editorial model** (Claude Sonnet in production):
+- Reads all 10 papers
+- Writes the answer in the voice of a smart, honest friend who reads research
+- Identifies 2–4 `openThreads` — things it deliberately left unsaid, which become the follow-up chips
+- Calibrated by conversation depth: orient queries get a 180–280 word focused answer; review queries get comprehensive coverage
 
-## Vercel setup
+**Mechanical model** (Gemini Flash Lite in parallel):
+- Extracts confidence level: preliminary / promising / moderate / strong
+- Writes one plain-English sentence per paper (shown in sidebar)
+- Flags if there's genuinely no relevant evidence
 
-Create a Vercel project with root directory:
+Both run at the same time. Total latency ≈ 20s.
 
-`artifacts/clarity`
+### Step 6 — Grounding
 
-Do not set `VITE_API_BASE_URL` for production when using the Vercel proxy setup.
+Every claim in the synthesis is matched back to a verbatim abstract passage — deterministic bigram matching, no LLM. Claims that can't be grounded are flagged. Causal overreach and invented numbers are caught before the response is sent.
 
-`artifacts/clarity/vercel.json` is responsible for:
+### Step 7 — UI
 
-- proxying `/api/*` to Railway
-- rewriting all other non-API routes to `index.html` for SPA routing
+```
+┌────────────────────────────────┬─────────────────────────────┐
+│  Chat (left)                   │  Papers sidebar (right)     │
+│                                │                             │
+│  Answer prose                  │  "Claims & evidence"        │
+│  Confidence badge              │    ↳ claim rows + snippets  │
+│  Follow-up chips               │                             │
+│  [click chip → new turn]       │  "Start here"               │
+│                                │    ↳ 2 recommended papers   │
+│  Filter bar:                   │                             │
+│  All / RCTs+Meta / Human only  │  Turn groups                │
+│                                │    ↳ Original evidence      │
+│                                │    ↳ Added: "asked about X" │
+│                                │                             │
+│                                │  Click paper → full detail  │
+│                                │  (abstract, badges, deep    │
+│                                │   read, contradiction flag) │
+└────────────────────────────────┴─────────────────────────────┘
+```
 
-## Railway setup
+---
 
-Create one Railway project with:
+## The Search Pipeline (diagram)
 
-1. A PostgreSQL service
-2. A service for this repo using the repo-root `Dockerfile`
+```mermaid
+flowchart TD
+    Q[User question] --> P[Planner\nGemini Flash Lite\nintent · entities · depth · isPractical]
 
-Set these backend variables:
+    P --> R1[Semantic Scholar]
+    P --> R2[OpenAlex]
+    P --> R3[EuropePMC]
+    P --> R4[CORE]
 
-- `DATABASE_URL`
-- `PORT=8085`
-- `NODE_ENV=production`
-- `SESSION_SECRET=...`
-- `SESSION_COOKIE_NAME=clarity.sid`
-- `CORS_ORIGIN=https://YOUR-VERCEL-FRONTEND.vercel.app`
-- `OPENROUTER_API_KEY=...`
-- `OPENROUTER_STRUCTURED_MODEL=google/gemini-2.5-flash`
-- `OPENROUTER_EDITORIAL_MODEL=google/gemini-2.5-flash`
-- `OPENROUTER_EDITORIAL_BACKUP_MODEL=anthropic/claude-3.5-haiku`
-- `CLARITY_ENABLE_REVIEW_PASS=false`
+    R1 & R2 & R3 & R4 --> D[Deduplicate\nDOI + fuzzy title]
+    D --> RR[Reranker\nCohere — semantic relevance]
+    RR --> TV[Topical veto\nLlama 8B — intervention mismatch filter\nSkipped for orient + exploration queries]
+    TV --> EV[Evidence scoring\ndesign · recency · citations · population · outcome fit\nLabel: direct / adjacent / weak / mismatch]
+    EV --> JQ{Quality\ncheck}
 
-After first deploy, run:
+    JQ -->|score < 0.28\nor entity conflict| REP[Query repair\nGemini Flash Lite\nre-retrieve with tighter queries]
+    REP --> EV
 
-1. `pnpm --filter @workspace/db push`
-2. `pnpm seed:demos:prod`
+    JQ -->|pass| SYN
 
-against the production environment.
+    subgraph SYN [Synthesis — parallel]
+        ED[Editorial\nClaude Sonnet\nsyntheisisText + openThreads]
+        ME[Mechanical\nGemini Flash Lite\nconfidence + paperSummaries]
+    end
 
-## Verification
+    SYN --> GV[Grounding validator\nclaim → verbatim abstract snippet\ndeterministic · no LLM]
+    GV --> UI[Search result]
 
-Before shipping, run:
+    UI --> FU{Follow-up?}
+    FU -->|chip clicked\nor typed| ORC[Sidebar orchestrator\nGemini Flash\nroutes: answer · expand · refine · clarify]
+    ORC -->|needs new papers| REP2[Focused retrieval\nmerged into session]
+    ORC -->|existing papers enough| FUA[Follow-up synthesis\nClaude plain prose\nno structured schema\nchips via Gemini Lite]
+    REP2 --> FUA
+    FUA --> UI
+```
 
-- `pnpm typecheck`
-- `pnpm build`
-- `pnpm --filter @workspace/api-server test`
+---
 
-Then manually test:
+## What Determines the Answer Shape
 
-- register
-- login
-- dashboard
-- demo paper visibility
-- upload
-- analysis
-- Q&A
+| Signal | Detected by | Effect |
+|--------|-------------|--------|
+| `conversationDepth: orient` | "tell me about X", "what is Y" | 180–280 word answer, broad openThreads |
+| `conversationDepth: answer` | specific question (default) | precise answer, adjacent angles in openThreads |
+| `conversationDepth: review` | "full review", "exhaustive overview" | comprehensive coverage |
+| `isPracticalQuery: true` | "should I", "is it worth", "what should I do" | leads with recommendation, then evidence |
+| `isComparison: true` | "X vs Y", "as good as" | leads with best proxy finding, names gap explicitly |
+| `intentType: claim_check` | "I heard that…", "is it true that…" | steelmans the claim first, then full picture |
+| Low retrieval quality | judge score < 0.28 | triggers query repair cycle |
+| `noEvidence: true` | mechanical model | synthesis says so directly |
 
-If auth appears to succeed but follow-up authenticated API calls return `401`, verify that the frontend is using the Vercel `/api` proxy rather than calling Railway cross-origin directly.
+---
+
+## Follow-up Turns
+
+After the initial answer, the user can:
+
+- **Click a follow-up chip** — generated by Claude from `openThreads` (what it deliberately left unsaid)
+- **Type a free question** — classified by the sidebar orchestrator
+
+The orchestrator picks one of five actions:
+1. `answer_current_results` — answer from existing papers (no new retrieval)
+2. `refine_current_canvas` — filter existing papers, re-synthesise
+3. `focused_retrieval_expansion` — fetch new papers, merge into session, re-synthesise
+4. `clarification_prompt` — rarely used; only for genuinely unparseable queries
+5. `exhaustive_intent_transparency` — explains scope limits
+
+Session evidence accumulates across turns. The sidebar shows paper groups per turn with NEW badges.
+
+---
+
+## Monorepo Layout
+
+```
+artifacts/clarity/          Vite React frontend
+artifacts/api-server/       Express API server
+  src/lib/search/           The full search pipeline
+    researchPlanner.ts      Step 1 — intent + entity extraction
+    retrieval.ts            Step 2 — four-source parallel fetch
+    dedupe.ts               Step 3a — DOI + title dedup
+    reranker.ts             Step 3b — Cohere rerank
+    topicalVeto.ts          Step 3c — LLM mismatch filter
+    ranking.ts              Step 3d — evidence scoring + sort
+    evidenceFit.ts          Step 3e — direct/adjacent/weak/mismatch per paper
+    retrievalJudge.ts       Step 4 — quality score + repair trigger
+    queryRepair.ts          Step 4b — re-retrieval with tighter queries
+    synthesizer.ts          Step 5 — editorial + mechanical synthesis
+    groundingValidator.ts   Step 6 — causal overreach + number checks
+    evidenceSpans.ts        Step 6b — claim → snippet matching
+    index.ts                Pipeline orchestrator (runSearch)
+    types.ts                All TypeScript types
+  src/routes/search.ts      HTTP layer, follow-up dispatch, session writes
+lib/db/                     Drizzle schema + database access
+```
+
+---
+
+## For New Contributors / Agents
+
+**Read in this order:**
+
+1. `AGENTS.md` — what we build for, voice rules, non-negotiables
+2. `ONBOARDING.md` — 5-minute pipeline walkthrough, current bugs, recent fixes
+3. `ARCHITECTURE.md` — detailed system structure and model assignments
+4. `PROMPTS.md` — synthesis prompt, editorial voice constraints
+5. `artifacts/api-server/src/lib/search/synthesizer.ts` — the most important file
+
+---
+
+## Local Development
+
+```bash
+pnpm install
+cp .env.example .env        # set OPENROUTER_API_KEY
+docker compose up -d        # start Postgres
+pnpm --filter @workspace/db push
+pnpm dev                    # frontend on :5175, API on :8085
+```
+
+---
+
+## Deployment
+
+| Surface | Host |
+|---------|------|
+| Frontend | Vercel (root: `artifacts/clarity`) |
+| API server | Railway (repo-root `Dockerfile`) |
+| Database | Railway Postgres |
+
+Railway auto-deploys on push to `main`. Vercel auto-deploys frontend.
+
+Vercel proxies `/api/*` to Railway so auth cookies stay same-origin. Do not set `VITE_API_BASE_URL` in Vercel production env.
+
+**Required Railway env vars:**
+
+```
+DATABASE_URL
+PORT=8085
+NODE_ENV=production
+SESSION_SECRET=...
+SESSION_COOKIE_NAME=clarity.sid
+CORS_ORIGIN=https://your-vercel-app.vercel.app
+OPENROUTER_API_KEY=...
+OPENROUTER_SEARCH_MODEL=anthropic/claude-sonnet-4-6
+```
+
+After first deploy: `pnpm --filter @workspace/db push`
+
+---
+
+## Verification Before Shipping
+
+```bash
+pnpm typecheck
+pnpm build
+```
+
+Then manually test: register → login → run a search → click a follow-up chip → check paper sidebar → expand a paper → check grounding.
