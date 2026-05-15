@@ -319,7 +319,7 @@ export async function synthesisePapers(
       : ``,
     (() => {
       const depth = plan.conversationDepth ?? "answer";
-      if (depth === "orient") return `\nCONVERSATION DEPTH — ORIENT: This is a broad exploratory question. Give your single clearest finding or framing — the most interesting specific thing you can say. Keep the prose focused. Leave the rest as openThreads; the conversation will go deeper if the user wants. Do not try to cover everything.`;
+      if (depth === "orient") return `\nCONVERSATION DEPTH — ORIENT: Strict word limit for synthesisText: 180–280 words maximum. Lead with the single most important takeaway in 1-2 sentences. Cover only 1-2 supporting ideas that directly reinforce that takeaway. STOP there. Do not explain every paper. Do not cover every angle. Do not pre-answer follow-up questions. Everything else goes in openThreads — that is what they are for. The user will ask follow-ups. The conversation is just starting.`;
       if (depth === "review") return `\nCONVERSATION DEPTH — REVIEW: The user wants comprehensive coverage. Be thorough — cover the main evidence threads, important sub-questions, nuances, and limitations. Use openThreads for truly residual angles.`;
       return `\nCONVERSATION DEPTH — ANSWER: Answer the specific question precisely. Don't pad or expand beyond what was asked. Use openThreads for adjacent angles you noticed but didn't address.`;
     })(),
@@ -394,7 +394,7 @@ export async function synthesisePapers(
         } catch (backupErr) {
           logger.error({ err: backupErr, query: plan.userQuestion }, "Editorial synthesis failed after backup");
           return {
-            synthesisText: "The paper list is still worth browsing directly. We found relevant research, but the Clarity readout did not land cleanly this time.",
+            synthesisText: "I found relevant research but had trouble putting the answer together this time. The papers below are worth browsing directly — they likely contain what you're looking for.",
             openThreads: plan.followUpQuestions.slice(0, 4),
           };
         }
@@ -430,13 +430,17 @@ export async function synthesisePapers(
 // FOLLOW-UP SYNTHESIS — Answers user questions with delta context
 // ============================================================================
 
-const followUpOutputSchema = z.object({
-  synthesisText: z.string(),
-  confidence: z.enum(["preliminary", "promising", "moderate", "strong"]),
-  followUpOptions: z.array(z.string()).min(2).max(4),
+// Follow-up synthesis uses plain-text output from Claude (no structured JSON — avoids 400s
+// from strict-mode schema constraints). Chips are generated separately via Gemini Lite.
+const followUpChipsSchema = z.object({
+  followUpOptions: z.array(z.string()),
 });
 
-export type FollowUpSynthesisOutput = z.infer<typeof followUpOutputSchema>;
+export interface FollowUpSynthesisOutput {
+  synthesisText: string;
+  confidence: "preliminary" | "promising" | "moderate" | "strong";
+  followUpOptions: string[];
+}
 
 const FOLLOW_UP_SYNTHESIS_PROMPT = `You're picking up a thread in an ongoing investigation. The user asked a follow-up question — answer it directly and then show how it changes or deepens what we already know.
 
@@ -456,10 +460,13 @@ Never end with "more research is needed." Never hedge so much the answer becomes
 
 NEVER end with: "Would you like to explore...", "Would you like me to...", "Let me know if..." — end with the most precise specific thing you have to say.
 
-Return strict JSON with:
-- synthesisText: your follow-up answer
-- confidence: the evidence level ("preliminary" | "promising" | "moderate" | "strong")
-- followUpOptions: 2-4 specific follow-up questions that emerge naturally from THIS answer — not generic headers, but real next questions someone would genuinely want to ask`;
+Write plain prose. No JSON, no headers, no bullet points unless the evidence genuinely calls for it.`;
+
+const FOLLOW_UP_CHIPS_PROMPT = `Given this follow-up answer and the conversation context, generate 2-4 specific follow-up questions the user might genuinely want to ask next.
+
+Not generic headers. Real questions that emerge naturally from THIS specific answer — angles left unexplored, dose questions, population questions, practical next steps.
+
+Return strict JSON: { "followUpOptions": ["question 1", "question 2", ...] }`;
 
 interface FollowUpSynthesisParams {
   originalQuery: string;
@@ -589,32 +596,48 @@ export async function synthesiseFollowUpAnswer(
     formatPapersForFollowUp(newPapers, "NEW", [...plan.entities, ...(plan.hiddenGoals ?? [])]),
   ].filter(Boolean).join("\n");
 
-  const attempts = [
+  // Generate chips context for parallel Gemini Lite call
+  const chipsContext = `Original question: ${originalQuery}\nFollow-up: ${followUpQuestion}\nAnswer will address: ${userIntent.mainQuestion}`;
+
+  async function generateChips(synthesisText: string): Promise<string[]> {
+    try {
+      const raw = await callLLM(
+        FOLLOW_UP_CHIPS_PROMPT,
+        `${chipsContext}\n\nAnswer just written:\n${synthesisText.slice(0, 1000)}`,
+        followUpChipsSchema,
+        { model: SEARCH_MECHANICAL_MODEL, temperature: 0.3, timeoutMs: 15_000 },
+      );
+      const data = typeof raw === "string" ? tolerantJsonParse(raw) : raw;
+      const parsed = followUpChipsSchema.parse(data);
+      return deduplicateFollowUpOptions(parsed.followUpOptions);
+    } catch (err) {
+      logger.warn({ err }, "Follow-up chips generation failed — using plan fallback");
+      return plan.followUpQuestions.slice(0, 4);
+    }
+  }
+
+  // Plain-text call to editorial model — no schema, no response_format, no 400 risk
+  const editorialAttempts = [
     { label: "primary", model: SEARCH_EDITORIAL_MODEL, timeoutMs: 60_000 },
     { label: "backup", model: SEARCH_BACKUP_MODEL, timeoutMs: 90_000 },
   ] as const;
 
+  let synthesisText: string | null = null;
   let lastError: unknown = null;
 
-  for (const attempt of attempts) {
+  for (const attempt of editorialAttempts) {
     try {
-      const raw = await callLLM(
+      synthesisText = await callLLM(
         FOLLOW_UP_SYNTHESIS_PROMPT,
         userMessage,
-        followUpOutputSchema,
-        { model: attempt.model, temperature: 0.45, timeoutMs: attempt.timeoutMs },
+        undefined, // no schema — plain prose from Claude
+        { model: attempt.model, temperature: 0.45, timeoutMs: attempt.timeoutMs, maxTokens: 2048 },
       );
-
-      const data = typeof raw === "string" ? tolerantJsonParse(raw) : raw;
-      const result = followUpOutputSchema.parse(data);
-      result.followUpOptions = deduplicateFollowUpOptions(result.followUpOptions);
-
       logger.info(
         { model: attempt.model, hasNewPapers, query: followUpQuestion },
         "Follow-up synthesis succeeded",
       );
-
-      return result;
+      break;
     } catch (err) {
       lastError = err;
       logger.warn(
@@ -624,15 +647,25 @@ export async function synthesiseFollowUpAnswer(
     }
   }
 
-  logger.error(
-    { err: lastError, query: followUpQuestion },
-    "Follow-up synthesis failed after retries",
-  );
+  if (!synthesisText || synthesisText.trim().length < 50) {
+    logger.error(
+      { err: lastError, query: followUpQuestion },
+      "Follow-up synthesis failed after retries",
+    );
+    return {
+      synthesisText: `I found relevant research on your follow-up, but had trouble putting the answer together this time. The papers in this session are worth browsing directly — they likely contain what you're looking for.`,
+      confidence: evidenceSnapshot.overallConfidence,
+      followUpOptions: plan.followUpQuestions.slice(0, 4),
+    };
+  }
+
+  // Run chip generation in parallel with nothing (chips depend on synthesisText, which is ready now)
+  const followUpOptions = await generateChips(synthesisText);
 
   return {
-    synthesisText: `I searched for evidence on your follow-up question, but the synthesis didn't come together cleanly. The papers ${hasNewPapers ? "I found" : "in this session"} are worth reviewing directly—they likely contain the answer.`,
-    confidence: "preliminary",
-    followUpOptions: plan.followUpQuestions.slice(0, 4),
+    synthesisText: synthesisText.trim(),
+    confidence: evidenceSnapshot.overallConfidence,
+    followUpOptions,
   };
 }
 
