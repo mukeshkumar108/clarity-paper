@@ -32,8 +32,9 @@
 - [x] Replace `rerunSearchIntoExistingSession` calls in follow-up flow with `retrieveFocusedPapers`
 
 **Phase 3 — Evidence Semantics**
+- [x] Exempt meta-analyses, systematic reviews, and RCTs from deterministic veto filters in `topicalVeto.ts`
+- [x] LLM veto prompt updated: keep broad-class systematic reviews as `adjacent` not `remove`
 - [ ] Mechanism-to-outcome bridging: upgrade mechanistic papers from `weak` to `adjacent` evidenceFit when intent is `topic_exploration`
-- [ ] Exempt context-lane papers from disease-bleed veto in `topicalVeto.ts`
 - [ ] Directional contradiction detection: expand beyond positive/null to increase/decrease and population-specific disagreements
 
 **Other**

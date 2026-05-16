@@ -2,6 +2,20 @@
 
 All notable product and engineering changes should be tracked here.
 
+## 2026-05-16 (Phase 3 + quality fixes)
+
+### Search — Evidence quality + voice
+
+**Topical veto softened** (`topicalVeto.ts`): Meta-analyses, systematic reviews, and RCTs are now exempt from the deterministic heuristic filters (`hasForeignInterventionMismatch`, `hasOffTopicConditionMismatch`) — they're too valuable to cut without LLM judgment. LLM veto prompt updated to keep broad-class systematic reviews as `adjacent` rather than `remove`.
+
+**Synthesis voice updated** (`synthesizer.ts`): Prompt rewritten to be more like an enthusiastic science teacher — plain words, genuine reactions, "wait this is actually fascinating" energy. Banned hedging phrases like "promising potential" and "it is worth noting."
+
+**Pathway card coercion fixed** (`synthesizer.ts`): Backup models (haiku) return `evidenceFit` as integers (1/2/3) instead of strings. Added `coerceEvidenceFit` preprocessor that maps 1→"direct", 2→"adjacent", 3→"weak" before Zod validation, so pathway cards now show real evidence fits instead of all defaulting to "Needs more research."
+
+**Follow-up synthesis ZodError fixed** (`synthesizer.ts`): Added `.catch()` defaults on `evidenceFit` and `icon` fields so invalid model output no longer kills the entire follow-up synthesis.
+
+---
+
 ## 2026-05-16 (Phase 2)
 
 ### Search — Delta Retrieval

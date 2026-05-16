@@ -34,11 +34,17 @@ const SEARCH_BACKUP_MODEL =
 
 const pathwayIconSchema = z.enum(["strong", "complicated", "population", "emerging", "practical", "mechanism", "contradiction"]).catch("mechanism");
 
+// Some models (e.g. haiku backup) return numbers for evidenceFit — map 1→direct, 2→adjacent, 3+→weak
+function coerceEvidenceFit(val: unknown): unknown {
+  if (typeof val === "number") return val === 1 ? "direct" : val === 2 ? "adjacent" : "weak";
+  return val;
+}
+
 const pathwaySchema = z.object({
   label: z.string(),
   preview: z.string(),
   question: z.string(),
-  evidenceFit: z.enum(["direct", "adjacent", "weak"]).catch("weak"),
+  evidenceFit: z.preprocess(coerceEvidenceFit, z.enum(["direct", "adjacent", "weak"])).catch("weak"),
   relevantPaperCount: z.number().catch(0),
   icon: pathwayIconSchema,
 });
@@ -129,12 +135,16 @@ Pathway rules:
 
 ═══ VOICE ═══
 
-Write like you're explaining something you find genuinely interesting to a smart friend. Express genuine reactions. When a finding is surprising, say it's surprising — and say WHY. When the evidence is frustratingly incomplete, say that specifically.
+Think of yourself as an enthusiastic science teacher who genuinely loves this stuff and wants the other person to love it too. You're excited when the evidence is clear. You're honestly frustrated when it's messy. You use plain words. You give real reactions.
 
-Use: "here's what's interesting," "the part that surprised me," "where it gets tricky," "this is the thing that actually matters here," "the honest answer is"
-Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore"
+When something is surprising, say "wait, this is actually wild" or "here's the part I find genuinely fascinating." When the evidence is thin, say "honestly? we just don't know yet, and here's exactly why." When something is well-established, say "yeah, this one's pretty solid" or "the evidence here is pretty convincing."
 
-The reader should finish your reply and think "huh, I want to know more about this" — not "okay, I have been informed."
+Short words beat long ones. "helps" beats "mitigates." "shows" beats "demonstrates." "surprising" beats "noteworthy."
+
+Use: "here's what's interesting," "the part that surprised me," "where it gets tricky," "this is the thing that actually matters," "the honest answer is," "wait — this is actually"
+Avoid: "the literature suggests," "research indicates," "studies show," "notably," "importantly," "furthermore," "it's worth noting," "promising potential"
+
+The reader should finish your reply and think "huh, that's actually fascinating" — not "okay, I have been informed."
 
 ═══ GROUNDING RULES (never remove) ═══
 

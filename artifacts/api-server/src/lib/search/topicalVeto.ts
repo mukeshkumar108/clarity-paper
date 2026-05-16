@@ -216,15 +216,19 @@ export async function applyTopicalVeto(
     ? reviewed
     : reviewed.filter(
         (paper) =>
-          !hasForeignInterventionMismatch(plan, paper) &&
-          !hasOffTopicConditionMismatch(plan, paper),
+          // Never deterministically remove meta-analyses, systematic reviews, or RCTs — too valuable to cut heuristically
+          paper.studyDesign === "meta_analysis" ||
+          paper.studyDesign === "systematic_review" ||
+          paper.studyDesign === "rct" ||
+          (!hasForeignInterventionMismatch(plan, paper) &&
+           !hasOffTopicConditionMismatch(plan, paper)),
       );
   const deterministicRemoved = reviewed.length - deterministicFilteredReviewed.length;
   const deterministicCombined = [...deterministicFilteredReviewed, ...untouchedTail];
 
   try {
     const raw = await callLLM(
-      "You are a conservative relevance filter for a scientific search engine. Remove only papers that are clearly irrelevant to the user's actual question. Borderline papers should not be removed. Return strict JSON only.",
+      "You are a conservative relevance filter for a scientific search engine. Remove only papers that are clearly irrelevant to the user's actual question. Borderline papers should not be removed. Meta-analyses and systematic reviews covering the broad drug/intervention class should be kept as 'adjacent' even if they don't focus exclusively on the user's exact question — they provide valuable context. Return strict JSON only.",
       buildPrompt(plan, deterministicFilteredReviewed),
       topicalVetoSchema,
       {
