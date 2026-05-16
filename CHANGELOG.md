@@ -2,6 +2,27 @@
 
 All notable product and engineering changes should be tracked here.
 
+## 2026-05-16 (Synthesis prompt architecture rewrite)
+
+### Search — Answer-first synthesis
+
+**Root cause of academic voice fixed** (`synthesizer.ts`): The prompts were treating the model as a rule-following summarizer. Every model tried (6+) produced the same academic register because the prompts framed the task as "synthesize these papers" with rule lists about forbidden phrases. The model would read the papers and write a literature summary. Fixed by changing the fundamental frame.
+
+**What changed:**
+- `SYNTHESIS_SYSTEM_PROMPT` stripped from ~700 words to ~250 words. Removed: FORBIDDEN phrase list, VOICE word lists, JARGON TRANSLATION table, PARAGRAPH headers, comparison/practical rule blocks. Replaced with role + primary job + structural guidance for what each paragraph should *do*.
+- Primary instruction: "Start with your answer in the first sentence — yes, no, it depends, or genuinely unclear and why." The papers are evidence to answer a question, not an outline to follow.
+- Paragraph structure: answer → what makes it interesting/complicated → concrete takeaway ("treat this as X, not Y") rather than future-research gestures.
+- `FOLLOW_UP_SYNTHESIS_PROMPT` stripped from ~200 words to ~80 words. The investigation state in the user message does the contextual work; the prompt just sets the situation.
+- `FOLLOW_UP_SYSTEM_PROMPT` (chips model) also simplified.
+- userMessage builder simplified: "Someone asked: X" instead of "Question: X", removed "MUST address" rule blocks and INTERPRETATION FRAMEWORK, kept evidence landscape counts and comparison/practical flags.
+
+**Tested with eval harness:**
+- Before: "Current evidence suggests that creatine supplementation may offer beneficial effects on cognitive function in adults..."
+- After: "Yes, creatine does help the brain, particularly under conditions of stress or cognitive challenge. A 2024 meta-analysis found..."
+- Omega-3 for depression ends with: "Therefore, treat omega-3 supplementation, particularly those rich in EPA, as a potentially useful adjunctive therapy..." — concrete takeaway, not "more research is needed."
+
+---
+
 ## 2026-05-16 (Phase 3 + quality fixes)
 
 ### Search — Evidence quality + voice

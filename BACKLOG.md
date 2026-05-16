@@ -37,6 +37,9 @@
 - [ ] Mechanism-to-outcome bridging: upgrade mechanistic papers from `weak` to `adjacent` evidenceFit when intent is `topic_exploration`
 - [ ] Directional contradiction detection: expand beyond positive/null to increase/decrease and population-specific disagreements
 
+**Synthesis voice**
+- [x] Answer-first synthesis: rewrite prompts as role + task, not rule lists. Start with direct answer to the question asked.
+
 **Other**
 - [ ] Mark explored pathways: track which pathway questions have been used, filter from next round
 - [ ] Full-text retrieval: fetch open-access PDFs for top papers, index full text for snippet extraction
