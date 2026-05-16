@@ -14,8 +14,9 @@ import { validateGrounding } from "./groundingValidator";
 import { buildEvidenceSpans, computeSpanDiagnostics } from "./evidenceSpans";
 import { detectContradictions } from "./contradictionDetector";
 import { enrichWithUnpaywall } from "./unpaywallClient";
+import { buildInitialInvestigationState } from "./investigationState";
 import { logger } from "../logger";
-import type { SearchResult, SearchProgressEvent, RetrievedPaper, RankedPaper, DebugMetadata, PipelineLatency, EvidenceSpan, GroundingDiagnostics, RetrievalSourceCounts, SearchSessionDetail, SearchSessionMessage, SearchFocusState, ResearchPlan } from "./types";
+import type { SearchResult, SearchProgressEvent, RetrievedPaper, RankedPaper, DebugMetadata, PipelineLatency, EvidenceSpan, GroundingDiagnostics, RetrievalSourceCounts, SearchSessionDetail, SearchSessionMessage, SearchFocusState, ResearchPlan, InvestigationState } from "./types";
 import type { SynthesisOutput } from "./synthesizer";
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -432,7 +433,6 @@ export async function overwriteSearchSession(
   sessionId: number,
   result: Omit<SearchResult, "sessionId">,
 ): Promise<void> {
-  const hasPathwaysColumn = await hasSearchSessionsPathwaysColumn();
   await db
     .update(searchSessionsTable)
     .set({
@@ -443,7 +443,10 @@ export async function overwriteSearchSession(
       confidence: result.confidence,
       evidenceSnapshot: result.evidenceSnapshot as any,
       followUpOptions: result.followUpOptions as any,
-      ...(hasPathwaysColumn ? { pathways: (result.pathways ?? []) as any } : {}),
+      pathways: (result.pathways ?? []) as any,
+      ...(result.investigationState !== undefined
+        ? { investigationState: result.investigationState as any }
+        : {}),
     })
     .where(eq(searchSessionsTable.id, sessionId));
 }
@@ -809,26 +812,38 @@ export async function runSearch(
 
   logger.info({ totalMs, quality: judgment.quality, repairTriggered }, "Search pipeline complete");
 
+  // 9b. Build investigation state (Flash Lite — run before persist so it lands in row 0)
+  let investigationState: InvestigationState | undefined;
+  try {
+    investigationState = await buildInitialInvestigationState(
+      plan,
+      synthesis.synthesisText,
+      synthesis.followUpOptions,
+    );
+  } catch (stateErr) {
+    logger.warn({ err: stateErr }, "Investigation state build failed — non-fatal");
+  }
+
   // 10. Persist session (non-fatal — search results still returned if DB unavailable)
   let sessionId: number | null = null;
   try {
-    const hasPathwaysColumn = await hasSearchSessionsPathwaysColumn();
     const [session] = await db
       .insert(searchSessionsTable)
-      .values(buildSearchSessionInsertValues({
+      .values({
         userId,
         query,
-        plannerOutput: plan,
-        papers: papersWithSummaries,
+        plannerOutput: plan as any,
+        papers: papersWithSummaries as any,
         synthesisText: synthesis.synthesisText,
         confidence: synthesis.confidence,
-        evidenceSnapshot: snapshot,
-        followUpOptions: synthesis.followUpOptions,
-        pathways: synthesis.pathways ?? [],
-      }, hasPathwaysColumn))
+        evidenceSnapshot: snapshot as any,
+        followUpOptions: synthesis.followUpOptions as any,
+        pathways: (synthesis.pathways ?? []) as any,
+        investigationState: (investigationState ?? null) as any,
+      })
       .returning({ id: searchSessionsTable.id });
     sessionId = session.id;
-    logger.info({ sessionId: session.id }, "Search session saved");
+    logger.info({ sessionId: session.id, hasInvestigationState: !!investigationState }, "Search session saved");
 
     // Persist the initial synthesis as a message (canvas→chat: truth lives in messages)
     try {
@@ -872,6 +887,7 @@ export async function runSearch(
     pathways: synthesis.pathways ?? [],
     evidenceSpans,
     coverageNote: "abstracts_only" as const,
+    investigationState,
     debugMetadata,
   };
 
@@ -886,9 +902,8 @@ export async function getSearchSession(
   sessionId: number,
   userId: number,
 ): Promise<SearchSessionDetail | null> {
-  const hasPathwaysColumn = await hasSearchSessionsPathwaysColumn();
   const [session] = await db
-    .select(buildSearchSessionSelect(hasPathwaysColumn))
+    .select()
     .from(searchSessionsTable)
     .where(
       and(
@@ -939,6 +954,7 @@ export async function getSearchSession(
     pathways: (session.pathways as any[]) ?? [],
     evidenceSpans,
     coverageNote: "abstracts_only" as const,
+    investigationState: (session.investigationState as InvestigationState | null) ?? undefined,
     messages: normalizedMessages,
     focusState,
   };
