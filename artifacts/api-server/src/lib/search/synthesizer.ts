@@ -32,14 +32,14 @@ const SEARCH_FOLLOWUP_MODEL =
 const SEARCH_BACKUP_MODEL =
   process.env.OPENROUTER_SEARCH_BACKUP_MODEL ?? "anthropic/claude-3.5-haiku";
 
-const pathwayIconSchema = z.enum(["strong", "complicated", "population", "emerging", "practical", "mechanism", "contradiction"]);
+const pathwayIconSchema = z.enum(["strong", "complicated", "population", "emerging", "practical", "mechanism", "contradiction"]).catch("mechanism");
 
 const pathwaySchema = z.object({
   label: z.string(),
   preview: z.string(),
   question: z.string(),
-  evidenceFit: z.enum(["direct", "adjacent", "weak"]),
-  relevantPaperCount: z.number(),
+  evidenceFit: z.enum(["direct", "adjacent", "weak"]).catch("weak"),
+  relevantPaperCount: z.number().catch(0),
   icon: pathwayIconSchema,
 });
 
