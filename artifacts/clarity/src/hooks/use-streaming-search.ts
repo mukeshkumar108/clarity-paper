@@ -105,6 +105,7 @@ export function useStreamingSearch() {
       setState({ kind: "searching", query });
       papersRef.current = null;
       let hadError = false;
+      let gotDone = false;
       let finalResult: SearchResult | null = null;
 
       try {
@@ -148,6 +149,15 @@ export function useStreamingSearch() {
               break;
             }
             case "done": {
+              if (event.sessionId <= 0) {
+                hadError = true;
+                setState({
+                  kind: "error",
+                  message: "Search finished, but the result could not be saved. Please try again.",
+                });
+                break;
+              }
+              gotDone = true;
               setState((prev) =>
                 prev.kind === "result"
                   ? {
@@ -177,6 +187,18 @@ export function useStreamingSearch() {
             err instanceof Error ? err.message : "Search failed. Please try again.";
           setState({ kind: "error", message });
         }
+      }
+
+      if (finalResult && !hadError && !gotDone) {
+        setState({
+          kind: "error",
+          message: "Search finished, but the result could not be saved. Please try again.",
+        });
+        return null;
+      }
+
+      if (hadError) {
+        return null;
       }
 
       return finalResult;

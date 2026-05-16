@@ -591,14 +591,21 @@ export function ChatCanvas({
 
   // Add initial synthesis as message[0] if we have it
   const initialSynthesisMsg = messages.find(m => m.kind === "synthesis");
+  const initialSynthesisMeta = initialSynthesisMsg?.metadata as SearchSessionMessage["metadata"] | undefined;
   if (!synthesisLoading) {
     allMessages.push({
       role: "assistant",
       content: initialSynthesisMsg?.content ?? result.synthesisText,
       kind: "synthesis",
       isFirst: true,
-      followUpOptions: result.followUpOptions,
-      pathways: result.pathways,
+      followUpOptions:
+        result.followUpOptions.length > 0
+          ? result.followUpOptions
+          : (initialSynthesisMeta?.followUpOptions as string[] | undefined),
+      pathways:
+        result.pathways.length > 0
+          ? result.pathways
+          : initialSynthesisMeta?.pathways,
     });
   }
 
