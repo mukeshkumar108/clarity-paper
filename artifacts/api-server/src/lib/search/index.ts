@@ -1,7 +1,7 @@
 import { db, searchSessionsTable, paperCacheTable, searchSessionMessagesTable } from "@workspace/db";
 import { eq, and, asc, inArray, sql } from "drizzle-orm";
 import { planResearch } from "./researchPlanner";
-import { retrievePlannedPapers } from "./retrieval";
+import { retrievePlannedPapers, retrievePapers } from "./retrieval";
 import { deduplicatePapers, filterGuidelineDocuments } from "./dedupe";
 import { rerankByRelevance } from "./reranker";
 import { applyTopicalVeto } from "./topicalVeto";
@@ -446,6 +446,24 @@ export async function overwriteSearchSession(
       ...(hasPathwaysColumn ? { pathways: (result.pathways ?? []) as any } : {}),
     })
     .where(eq(searchSessionsTable.id, sessionId));
+}
+
+export async function retrieveFocusedPapers(
+  sessionPlan: ResearchPlan,
+  focusQuery: string,
+): Promise<RankedPaper[]> {
+  const t0 = Date.now();
+  logger.info({ focusQuery }, "Focused retrieval started");
+
+  const rawPapers = await retrievePapers([focusQuery]);
+  const hydrated = await hydratePapersFromCache(rawPapers);
+  const deduped = filterGuidelineDocuments(deduplicatePapers(hydrated));
+  const reranked = await rerankByRelevance(sessionPlan.normalizedEnglishQuestion, deduped);
+  const vetoed = await applyTopicalVeto(sessionPlan, rankPapers(reranked, sessionPlan));
+  const ranked = filterTopicallyWeakPapers(vetoed, sessionPlan);
+
+  logger.info({ count: ranked.length, ms: Date.now() - t0 }, "Focused retrieval complete");
+  return ranked;
 }
 
 export async function rerunSearchIntoExistingSession(

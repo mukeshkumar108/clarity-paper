@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
-import { runSearch, getSearchSession, listSearchSessions, buildSearchResultFromPapers, overwriteSearchSession, rerunSearchIntoExistingSession } from "../lib/search/index";
+import { runSearch, getSearchSession, listSearchSessions, buildSearchResultFromPapers, overwriteSearchSession, retrieveFocusedPapers } from "../lib/search/index";
 import type { SearchProgressEvent, RankedPaper, SearchSessionDetail, EvidenceSnapshot } from "../lib/search/types";
 import { rankPapers, buildEvidenceSnapshot } from "../lib/search/ranking";
 import { sanitiseText } from "../lib/documentExtraction";
@@ -271,50 +271,32 @@ router.post("/search/sessions/:id/messages", requireAuth, async (req, res): Prom
         mergedSnapshot = buildEvidenceSnapshot(mergedPapers);
         
         if (papersForSynthesis.length === 0) {
-          // Filtered to nothing — run focused retrieval and merge
+          // Filtered to nothing — fetch focused papers and merge
           const effectiveQuery = action.refinedQuery?.trim() || `${session.query} ${trimmed}`;
-          await rerunSearchIntoExistingSession(req.session.userId!, id, effectiveQuery);
-          const rerunSession = await getSearchSession(id, req.session.userId!);
-          if (rerunSession) {
-            const existingIds = new Set(session.papers.map(p => p.externalId));
-            const trulyNewPapers = (rerunSession.papers as RankedPaper[]).filter(
-              p => !existingIds.has(p.externalId)
-            );
-            const combined = [...session.papers, ...trulyNewPapers] as RankedPaper[];
-            mergedPapers = rankPapers(combined, session.plan);
-            mergedSnapshot = buildEvidenceSnapshot(mergedPapers);
-            newPapers = trulyNewPapers;
-            papersForSynthesis = mergedPapers;
-          }
+          const focusedPapers = await retrieveFocusedPapers(session.plan, effectiveQuery);
+          const existingIds = new Set(session.papers.map(p => p.externalId));
+          const trulyNewPapers = focusedPapers.filter(p => !existingIds.has(p.externalId));
+          const combined = [...session.papers, ...trulyNewPapers];
+          mergedPapers = rankPapers(combined, session.plan);
+          mergedSnapshot = buildEvidenceSnapshot(mergedPapers);
+          newPapers = trulyNewPapers;
+          papersForSynthesis = mergedPapers;
           retrievalPerformed = true;
           papersAfter = mergedPapers.length;
         } else {
           papersAfter = mergedPapers.length;
         }
       } else {
-        // Need new retrieval — run focused search then MERGE papers into session
+        // Need new retrieval — fetch focused papers and merge into session
         const effectiveQuery = action.refinedQuery?.trim() || `${session.query} ${trimmed}`;
-        
-        // Run focused search (replaces session temporarily)
-        await rerunSearchIntoExistingSession(req.session.userId!, id, effectiveQuery);
-        
-        // Read back the rerun results (new papers only)
-        const rerunSession = await getSearchSession(id, req.session.userId!);
-        if (rerunSession) {
-          // Merge: deduplicate by externalId, keep original papers + add truly new ones
-          const existingIds = new Set(session.papers.map(p => p.externalId));
-          const trulyNewPapers = (rerunSession.papers as RankedPaper[]).filter(
-            p => !existingIds.has(p.externalId)
-          );
-          
-          // Combine and re-rank
-          const combined = [...session.papers, ...trulyNewPapers] as RankedPaper[];
-          mergedPapers = rankPapers(combined, session.plan);
-          mergedSnapshot = buildEvidenceSnapshot(mergedPapers);
-          newPapers = trulyNewPapers;
-          papersForSynthesis = mergedPapers;
-        }
-        
+        const focusedPapers = await retrieveFocusedPapers(session.plan, effectiveQuery);
+        const existingIds = new Set(session.papers.map(p => p.externalId));
+        const trulyNewPapers = focusedPapers.filter(p => !existingIds.has(p.externalId));
+        const combined = [...session.papers, ...trulyNewPapers];
+        mergedPapers = rankPapers(combined, session.plan);
+        mergedSnapshot = buildEvidenceSnapshot(mergedPapers);
+        newPapers = trulyNewPapers;
+        papersForSynthesis = mergedPapers;
         retrievalPerformed = true;
         papersAfter = mergedPapers.length;
       }

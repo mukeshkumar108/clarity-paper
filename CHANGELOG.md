@@ -2,6 +2,22 @@
 
 All notable product and engineering changes should be tracked here.
 
+## 2026-05-16 (Phase 2)
+
+### Search — Delta Retrieval
+
+**`retrieveFocusedPapers(sessionPlan, focusQuery)`** added to `lib/search/index.ts`.
+
+Follow-up retrieval no longer reboots the full `runSearch` pipeline. Previously, both canvas follow-up paths called `rerunSearchIntoExistingSession`, which ran planner → multi-source retrieval → dedup → rerank → judge → repair → synthesis, overwrote the session, then read it back to extract new papers. Now:
+
+1. `retrievePapers([focusQuery])` — single focused query against all four sources
+2. Hydrate from cache → dedup + guideline filter → Cohere rerank → topical veto → rank against the existing `sessionPlan`
+3. Callers in `routes/search.ts` merge the returned papers directly — no session overwrite, no DB round-trip
+
+`rerunSearchIntoExistingSession` is no longer called from the follow-up flow (though it remains exported for potential future use).
+
+---
+
 ## 2026-05-16
 
 ### Search — Conversational Architecture: Investigation State + Phase 0 Fixes

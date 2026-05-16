@@ -28,8 +28,8 @@
 ### Next
 
 **Phase 2 — Delta Retrieval (high priority)**
-- [ ] Extract `retrieveFocusedPapers(sessionPlan, focusQuery)` — focused retrieval that skips the full runSearch pipeline (no new planner, no judge/repair, no throwaway synthesis). Fetch papers, merge, re-rank against session plan.
-- [ ] Replace `rerunSearchIntoExistingSession` calls in follow-up flow with `retrieveFocusedPapers`
+- [x] Extract `retrieveFocusedPapers(sessionPlan, focusQuery)` — focused retrieval that skips the full runSearch pipeline (no new planner, no judge/repair, no throwaway synthesis). Fetch papers, merge, re-rank against session plan.
+- [x] Replace `rerunSearchIntoExistingSession` calls in follow-up flow with `retrieveFocusedPapers`
 
 **Phase 3 — Evidence Semantics**
 - [ ] Mechanism-to-outcome bridging: upgrade mechanistic papers from `weak` to `adjacent` evidenceFit when intent is `topic_exploration`
