@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { callLLM } from "../openRouterProvider";
 import { logger } from "../logger";
-import type { RankedPaper, ResearchPlan, EvidenceSnapshot, Pathway } from "./types";
+import type { RankedPaper, ResearchPlan, EvidenceSnapshot, Pathway, InvestigationState } from "./types";
 import type { Contradiction } from "./contradictionDetector";
 import { extractClaims } from "./evidenceSpans";
 
@@ -346,11 +346,19 @@ export async function synthesisePapers(
       ? formatPapersForSynthesis(papers, [...plan.entities, ...(plan.hiddenGoals ?? [])])
       : "No papers were retrieved.";
 
+  const depthInstruction =
+    plan.conversationDepth === "orient"
+      ? `\nCONVERSATION DEPTH — ORIENT: This is an exploratory opening question. Give ONE sharp finding that orients the user. Do NOT attempt comprehensive coverage. Open 2-3 unresolved threads for them to explore. Shorter is better here.`
+      : plan.conversationDepth === "review"
+      ? `\nCONVERSATION DEPTH — REVIEW: The user wants comprehensive coverage. Give a thorough synthesis across all the evidence. You can go broader than usual. Still no essays — but cover the landscape.`
+      : ``;
+
   const userMessage = [
     `YOUR BRIEFING:`,
     `───────────────`,
     `The user asked: "${plan.userQuestion}"`,
     `This is a ${plan.intentType.replace(/_/g, " ")} query.`,
+    depthInstruction,
     plan.isComparison
       ? `\nCOMPARISON: The user wants to know if one approach is better than another. Comparison target: "${plan.comparisonTarget}". If direct comparison evidence exists, lead with it. If not, triangulate from single-intervention studies and clearly label the gap.`
       : ``,
@@ -526,6 +534,8 @@ interface FollowUpSynthesisParams {
   plan: ResearchPlan;
   recentMessages?: Array<{ role: "user" | "assistant"; content: string }>;
   openThreads?: string[];
+  /** Living investigation state — used as primary context anchor when present */
+  investigationState?: InvestigationState;
 }
 
 function formatPapersForFollowUp(papers: RankedPaper[], label: string, entities: string[] = []): string {
@@ -568,27 +578,56 @@ export async function synthesiseFollowUpAnswer(
     evidenceSnapshot,
     plan,
     recentMessages,
+    investigationState,
   } = params;
 
   const hasNewPapers = newPapers.length > 0;
   const allPapers = [...existingPapers, ...newPapers];
 
-  // Conversation history block — lets Claude know what's already been covered in prior turns
+  // Primary context anchor: use structured investigationState when available (Phase 1).
+  // Falls back to frozen previousSynthesis slice if state not yet built (backward compat).
+  const investigationBlock = investigationState
+    ? [
+        "INVESTIGATION STATE (what has been established so far):",
+        `Current focus: ${investigationState.currentFocus}`,
+        investigationState.establishedFindings.length > 0
+          ? `Established findings:\n${investigationState.establishedFindings.map(f => `  ✓ ${f}`).join("\n")}`
+          : "",
+        investigationState.openThreads.length > 0
+          ? `Still open / unresolved:\n${investigationState.openThreads.map(t => `  ○ ${t}`).join("\n")}`
+          : "",
+        investigationState.exploredAngles.length > 0
+          ? `Already explored (do not repeat):\n${investigationState.exploredAngles.map(a => `  ✗ ${a}`).join("\n")}`
+          : "",
+        investigationState.contradictions.length > 0
+          ? `Active contradictions:\n${investigationState.contradictions.map(c => `  ⚡ ${c}`).join("\n")}`
+          : "",
+        "",
+      ].filter(Boolean)
+    : [
+        `Initial answer: ${previousSynthesis.slice(0, 600)}`,
+        "",
+      ];
+
+  // Conversation history block — recent turns for immediate context
   const conversationBlock = recentMessages && recentMessages.length > 0
     ? [
-        "CONVERSATION SO FAR (already covered — do not repeat these):",
+        "RECENT CONVERSATION (last turns):",
         ...recentMessages.map(m =>
-          `${m.role === "user" ? "User" : "You"}: ${m.content.slice(0, 400)}${m.content.length > 400 ? "..." : ""}`,
+          `${m.role === "user" ? "User" : "You"}: ${m.content.slice(0, 1200)}${m.content.length > 1200 ? "..." : ""}`,
         ),
         "",
       ]
     : [];
 
-  // Claim dedup from initial synthesis (skip if we already have conversation history — that covers it)
-  const previousClaims = recentMessages && recentMessages.length > 0 ? [] : extractClaims(previousSynthesis);
+  // Claim dedup: extract claims from the most recent assistant turn in conversation history.
+  // If no conversation history yet, fall back to the original synthesis text.
+  const lastAssistantMessage = recentMessages?.slice().reverse().find(m => m.role === "assistant");
+  const deduplicationSource = lastAssistantMessage?.content ?? previousSynthesis;
+  const previousClaims = extractClaims(deduplicationSource);
   const deduplicationBlock = previousClaims.length > 0
     ? [
-        "⛔ DO NOT REPEAT — these claims were already established in the first answer:",
+        "⛔ DO NOT REPEAT — these points were already covered:",
         ...previousClaims.map((c, i) => `  [${i + 1}] ${c}`),
         "",
         "Only surface what is new or what directly answers the follow-up question.",
@@ -600,8 +639,8 @@ export async function synthesiseFollowUpAnswer(
     `FOLLOW-UP INVESTIGATION BRIEFING:`,
     `──────────────────────────────────`,
     `Original query: ${originalQuery}`,
-    `Initial answer: ${previousSynthesis.slice(0, 600)}`,
     "",
+    ...investigationBlock,
     ...conversationBlock,
     ...deduplicationBlock,
     `═══ CURRENT QUESTION ═══`,

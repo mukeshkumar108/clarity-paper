@@ -14,6 +14,7 @@ import { planResearch } from "../lib/search/researchPlanner";
 import { synthesiseFollowUpAnswer } from "../lib/search/synthesizer";
 import { validateGrounding } from "../lib/search/groundingValidator";
 import { buildEvidenceSpans, computeSpanDiagnostics } from "../lib/search/evidenceSpans";
+import { buildSearchStreamTerminalEvent } from "../lib/search/streamTerminalEvent";
 import type { EvidenceSpan, GroundingDiagnostics } from "../lib/search/types";
 
 const router: IRouter = Router();
@@ -104,7 +105,7 @@ router.post("/search/stream", requireAuth, async (req, res): Promise<void> => {
 
   try {
     const result = await runSearch(req.session.userId!, query.trim(), write);
-    write({ type: "done", sessionId: result.sessionId });
+    write(buildSearchStreamTerminalEvent(result));
   } catch (err) {
     logger.error({ err }, "Streaming search failed");
     const message = err instanceof Error ? err.message : "Search failed";

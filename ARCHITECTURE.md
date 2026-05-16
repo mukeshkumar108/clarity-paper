@@ -238,7 +238,27 @@ The exploration sidebar has been converted to a **drawer pattern** — accessibl
 
 ### Search Session Persistence
 
-The underlying search session row still stores the current active search canvas:
+### Investigation State
+
+Every session maintains a living `InvestigationState` object that is the primary context anchor for follow-up synthesis. It replaces the frozen `synthesisText` (turn 0 snapshot) that was previously used as the anchor.
+
+```ts
+interface InvestigationState {
+  establishedFindings: string[];  // confirmed facts across turns (max 5)
+  openThreads: string[];          // questions raised but not yet answered (max 5)
+  exploredAngles: string[];       // follow-up angles already covered (max 10)
+  contradictions: string[];       // named disagreements still unresolved (max 3)
+  currentFocus: string;           // what the current turn is zoomed into
+}
+```
+
+**Build:** `buildInitialInvestigationState` runs after the initial synthesis (Gemini Flash Lite, ~1-2s), extracts structured state from the synthesis text and the planner's output.
+
+**Update:** `updateInvestigationState` runs after every follow-up turn. Adds new findings, removes resolved threads, marks explored angles. Persisted back to the session row.
+
+**Usage in synthesis:** `synthesiseFollowUpAnswer` receives `investigationState` and renders it as a structured briefing block — the model knows what's been established, what's open, what's already been covered, and what contradictions remain active. This replaces the previous 600-char truncated slice of the original answer.
+
+The underlying search session row stores the current active search canvas:
 
 - `query`
 - `plannerOutput`
@@ -247,6 +267,7 @@ The underlying search session row still stores the current active search canvas:
 - `confidence`
 - `evidenceSnapshot`
 - `followUpOptions`
+- `investigationState` ← living investigation spine, updated after every turn
 
 Structured sidebar exchanges are stored separately in `search_session_messages` with:
 

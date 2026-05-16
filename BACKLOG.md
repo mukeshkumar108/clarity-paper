@@ -22,12 +22,26 @@
 - [x] EvidenceSnapshot: bucket counts, overall confidence
 - [x] Q&A voice alignment: prompt re-aligned to "smart honest friend" editorial register; model upgraded to gemini-2.5-flash; context expanded to 20k
 
+- [x] Conversational architecture Phase 0: wire conversationDepth to synthesizer, raise message history limits, fix claim dedup on turns 2+
+- [x] Conversational architecture Phase 1: InvestigationState as living session spine — builds after initial synthesis, updates after every follow-up turn, replaces frozen synthesisText anchor
+
 ### Next
+
+**Phase 2 — Delta Retrieval (high priority)**
+- [ ] Extract `retrieveFocusedPapers(sessionPlan, focusQuery)` — focused retrieval that skips the full runSearch pipeline (no new planner, no judge/repair, no throwaway synthesis). Fetch papers, merge, re-rank against session plan.
+- [ ] Replace `rerunSearchIntoExistingSession` calls in follow-up flow with `retrieveFocusedPapers`
+
+**Phase 3 — Evidence Semantics**
+- [ ] Mechanism-to-outcome bridging: upgrade mechanistic papers from `weak` to `adjacent` evidenceFit when intent is `topic_exploration`
+- [ ] Exempt context-lane papers from disease-bleed veto in `topicalVeto.ts`
+- [ ] Directional contradiction detection: expand beyond positive/null to increase/decrease and population-specific disagreements
+
+**Other**
+- [ ] Mark explored pathways: track which pathway questions have been used, filter from next round
 - [ ] Full-text retrieval: fetch open-access PDFs for top papers, index full text for snippet extraction
-- [ ] Contradiction surfacing: explicit UI treatment for papers with conflicting findings (P6 — currently only in synthesis prompt, not structured)
-- [ ] Eval harness extensions: grounding precision, unsupported claim rate, provenance coverage metrics (P9)
+- [ ] Contradiction surfacing: explicit UI treatment for papers with conflicting findings
+- [ ] Eval harness extensions: grounding precision, unsupported claim rate, provenance coverage metrics
 - [ ] Mobile layout for search results: responsive EvidencePanel
-- [ ] Session persistence: allow returning to a prior search
 
 ## Document Analysis
 

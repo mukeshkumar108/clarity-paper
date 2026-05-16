@@ -14,6 +14,7 @@ export const searchSessionsTable = pgTable("search_sessions", {
   evidenceSnapshot: jsonb("evidence_snapshot").notNull().default({}),
   followUpOptions: jsonb("follow_up_options").notNull().default([]),
   pathways: jsonb("pathways").notNull().default([]),
+  investigationState: jsonb("investigation_state"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -2,6 +2,32 @@
 
 All notable product and engineering changes should be tracked here.
 
+## 2026-05-16
+
+### Search — Conversational Architecture: Investigation State + Phase 0 Fixes
+
+**Root cause addressed:** Every turn was treated as a fresh answer-generation event. The session stored a frozen snapshot (`synthesisText` written at turn 0); follow-ups read from it as a static anchor no matter how many turns had passed. This caused recap loops, pathway amnesia, and context starvation on longer conversations — the system had no memory of what had been established vs. what remained open.
+
+#### Phase 0 — Quick fixes
+
+- **`conversationDepth` wired to synthesizer** — the planner classified `orient`/`answer`/`review` but the synthesizer never received it. Now `orient` gets "one finding + open threads"; `review` gets broader coverage.
+- **Message history raised** — `.slice(-4)` → `.slice(-8)`, content truncation 400 → 1200 chars per message. Previously the model reasoned from a 600-char first-turn slice + 4 × truncated messages.
+- **Claim dedup fixed on turns 2+** — was silently disabled when `recentMessages` existed (always after turn 1). Now extracts claims from the most recent assistant message and uses those for dedup.
+
+#### Phase 1 — Investigation State
+
+**New file: `investigationState.ts`** — two Gemini Flash Lite calls:
+- `buildInitialInvestigationState`: runs after initial synthesis, extracts `establishedFindings`, `openThreads`, `exploredAngles`, `contradictions`, `currentFocus`
+- `updateInvestigationState`: runs after every follow-up turn, incrementally updates the state
+
+**`InvestigationState` interface** added to `types.ts` — the living spine of a multi-turn investigation.
+
+**DB column** `search_sessions.investigation_state jsonb` — persisted per session. Old sessions fall back to previous behavior gracefully.
+
+**`synthesiseFollowUpAnswer`** now accepts `investigationState` and uses it as the primary context anchor instead of the frozen `previousSynthesis.slice(0, 600)`. The model receives structured context: what's established, what's open, what's already been explored, active contradictions.
+
+**State updated after every turn** — fire-and-forget on `answer_current_results`; awaited and co-persisted on canvas updates.
+
 ## 2026-05-13
 
 ### Search — Synthesis Prompt Overhaul: Interpretation Over Summarization

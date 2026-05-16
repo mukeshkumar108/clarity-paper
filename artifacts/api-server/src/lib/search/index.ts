@@ -36,6 +36,79 @@ interface QueryCacheEntry {
   cachedAt: number;
 }
 
+type SearchSessionInsertValues = {
+  userId: number;
+  query: string;
+  plannerOutput: ResearchPlan;
+  papers: RankedPaper[];
+  synthesisText: string;
+  confidence: string;
+  evidenceSnapshot: ReturnType<typeof buildEvidenceSnapshot>;
+  followUpOptions: string[];
+  pathways: SearchResult["pathways"];
+};
+
+let searchSessionsPathwaysColumnPromise: Promise<boolean> | null = null;
+
+async function hasSearchSessionsPathwaysColumn(): Promise<boolean> {
+  if (!searchSessionsPathwaysColumnPromise) {
+    searchSessionsPathwaysColumnPromise = (async () => {
+      try {
+        const result = await db.execute(sql`
+          select exists (
+            select 1
+            from information_schema.columns
+            where table_schema = 'public'
+              and table_name = 'search_sessions'
+              and column_name = 'pathways'
+          ) as present
+        `);
+        return result.rows[0]?.present === true;
+      } catch (err) {
+        logger.warn({ err }, "Failed to inspect search_sessions.pathways column; assuming it exists");
+        return true;
+      }
+    })();
+  }
+
+  return searchSessionsPathwaysColumnPromise;
+}
+
+function buildSearchSessionInsertValues(
+  values: SearchSessionInsertValues,
+  hasPathwaysColumn: boolean,
+) {
+  return {
+    userId: values.userId,
+    query: values.query,
+    plannerOutput: values.plannerOutput as any,
+    papers: values.papers as any,
+    synthesisText: values.synthesisText,
+    confidence: values.confidence,
+    evidenceSnapshot: values.evidenceSnapshot as any,
+    followUpOptions: values.followUpOptions as any,
+    ...(hasPathwaysColumn ? { pathways: (values.pathways ?? []) as any } : {}),
+  };
+}
+
+function buildSearchSessionSelect(hasPathwaysColumn: boolean) {
+  return {
+    id: searchSessionsTable.id,
+    userId: searchSessionsTable.userId,
+    query: searchSessionsTable.query,
+    plannerOutput: searchSessionsTable.plannerOutput,
+    papers: searchSessionsTable.papers,
+    synthesisText: searchSessionsTable.synthesisText,
+    confidence: searchSessionsTable.confidence,
+    evidenceSnapshot: searchSessionsTable.evidenceSnapshot,
+    followUpOptions: searchSessionsTable.followUpOptions,
+    pathways: hasPathwaysColumn
+      ? searchSessionsTable.pathways
+      : sql`'[]'::jsonb`.as("pathways"),
+    createdAt: searchSessionsTable.createdAt,
+  };
+}
+
 const queryCache = new Map<string, QueryCacheEntry>();
 
 function normalizeQueryKey(query: string): string {
@@ -359,6 +432,7 @@ export async function overwriteSearchSession(
   sessionId: number,
   result: Omit<SearchResult, "sessionId">,
 ): Promise<void> {
+  const hasPathwaysColumn = await hasSearchSessionsPathwaysColumn();
   await db
     .update(searchSessionsTable)
     .set({
@@ -369,7 +443,7 @@ export async function overwriteSearchSession(
       confidence: result.confidence,
       evidenceSnapshot: result.evidenceSnapshot as any,
       followUpOptions: result.followUpOptions as any,
-      pathways: (result.pathways ?? []) as any,
+      ...(hasPathwaysColumn ? { pathways: (result.pathways ?? []) as any } : {}),
     })
     .where(eq(searchSessionsTable.id, sessionId));
 }
@@ -438,19 +512,21 @@ export async function runSearch(
     // Still persist session so user history is correct
     let sessionId = 0;
     try {
+      const hasPathwaysColumn = await hasSearchSessionsPathwaysColumn();
       const [session] = await db
         .insert(searchSessionsTable)
-        .values({
+        .values(buildSearchSessionInsertValues({
           userId,
           query,
-          plannerOutput: cached.plan as any,
-          papers: cached.papers as any,
+          plannerOutput: cached.plan,
+          papers: cached.papers,
           synthesisText: cached.synthesisText,
           confidence: cached.confidence,
-          evidenceSnapshot: cached.evidenceSnapshot as any,
-          followUpOptions: cached.followUpOptions as any,
-        })
-        .returning();
+          evidenceSnapshot: cached.evidenceSnapshot,
+          followUpOptions: cached.followUpOptions,
+          pathways: cached.pathways ?? [],
+        }, hasPathwaysColumn))
+        .returning({ id: searchSessionsTable.id });
       sessionId = session.id;
       pruneOldSessions(userId).catch((err) => logger.warn({ err }, "Session pruning failed"));
 
@@ -468,6 +544,8 @@ export async function runSearch(
             evidenceSpanCount: cached.evidenceSpans.length,
             groundingDiagnostics: spanDiag,
             noEvidence: cached.noEvidence,
+            followUpOptions: cached.followUpOptions,
+            pathways: cached.pathways ?? [],
           },
         });
       } catch (msgErr) {
@@ -716,20 +794,21 @@ export async function runSearch(
   // 10. Persist session (non-fatal — search results still returned if DB unavailable)
   let sessionId: number | null = null;
   try {
+    const hasPathwaysColumn = await hasSearchSessionsPathwaysColumn();
     const [session] = await db
       .insert(searchSessionsTable)
-      .values({
+      .values(buildSearchSessionInsertValues({
         userId,
         query,
-        plannerOutput: plan as any,
-        papers: papersWithSummaries as any,
+        plannerOutput: plan,
+        papers: papersWithSummaries,
         synthesisText: synthesis.synthesisText,
         confidence: synthesis.confidence,
-        evidenceSnapshot: snapshot as any,
-        followUpOptions: synthesis.followUpOptions as any,
-        pathways: (synthesis.pathways ?? []) as any,
-      })
-      .returning();
+        evidenceSnapshot: snapshot,
+        followUpOptions: synthesis.followUpOptions,
+        pathways: synthesis.pathways ?? [],
+      }, hasPathwaysColumn))
+      .returning({ id: searchSessionsTable.id });
     sessionId = session.id;
     logger.info({ sessionId: session.id }, "Search session saved");
 
@@ -746,6 +825,8 @@ export async function runSearch(
           evidenceSpanCount: evidenceSpans.length,
           groundingDiagnostics,
           noEvidence: synthesis.noEvidence,
+          followUpOptions: synthesis.followUpOptions,
+          pathways: synthesis.pathways ?? [],
         },
       });
     } catch (msgErr) {
@@ -787,8 +868,9 @@ export async function getSearchSession(
   sessionId: number,
   userId: number,
 ): Promise<SearchSessionDetail | null> {
+  const hasPathwaysColumn = await hasSearchSessionsPathwaysColumn();
   const [session] = await db
-    .select()
+    .select(buildSearchSessionSelect(hasPathwaysColumn))
     .from(searchSessionsTable)
     .where(
       and(

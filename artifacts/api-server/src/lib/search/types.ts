@@ -268,6 +268,26 @@ export interface DebugMetadata {
   paperCountAfterRepair: number | null;
 }
 
+// ─── Investigation state ──────────────────────────────────────────────────────
+
+/**
+ * The living spine of a multi-turn investigation. Updated after every turn.
+ * Replaces the frozen `synthesisText` as the primary context anchor for
+ * follow-up synthesis — the model reads THIS to know what has been established.
+ */
+export interface InvestigationState {
+  /** Key facts confirmed by the evidence across turns. Max 5. */
+  establishedFindings: string[];
+  /** Questions raised but not yet answered. Max 5. */
+  openThreads: string[];
+  /** Follow-up angles the user has already explored (matched against pathway questions). */
+  exploredAngles: string[];
+  /** Named contradictions or disagreements still unresolved. Max 3. */
+  contradictions: string[];
+  /** One sentence: what is the current conversation focused on. */
+  currentFocus: string;
+}
+
 // ─── Pathways ────────────────────────────────────────────────────────────────
 
 export type PathwayIcon =
@@ -323,6 +343,7 @@ export interface SearchResult {
   pathways: Pathway[];
   evidenceSpans: EvidenceSpan[];
   coverageNote: "abstracts_only" | "partial_full_text" | "full_text";
+  investigationState?: InvestigationState;
   debugMetadata?: DebugMetadata;
 }
 
